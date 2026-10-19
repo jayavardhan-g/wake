@@ -25,12 +25,11 @@ dependencies:
   flutter_slidable: ^3.1.0
   flutter_system_ringtones: ^0.0.6
   # android_alarm_manager_plus: ^4.0.4
+  # Vendored from AhsanSarwar45/plus_plugins@alarm_show_intent (ae6c11c) so
+  # alarms can run straight from the broadcast receiver; see
+  # packages/android_alarm_manager_plus/WAKE_CHANGES.md
   android_alarm_manager_plus:
-    # path: "../plus_plugins/packages/android_alarm_manager_plus/"
-    git:
-      url: https://github.com/AhsanSarwar45/plus_plugins
-      path: packages/android_alarm_manager_plus
-      ref: alarm_show_intent
+    path: packages/android_alarm_manager_plus
   just_audio: ^0.9.31
   awesome_notifications: ^0.9.3
   # awesome_notifications:
