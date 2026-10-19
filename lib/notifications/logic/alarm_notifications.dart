@@ -87,6 +87,21 @@ void showAlarmNotification({
       actionButtons: actionButtons);
 }
 
+// Uses the alarm's schedule id, so it replaces that alarm's upcoming-alarm
+// reminder rather than stacking up.
+Future<void> showMissedAlarmNotification(
+    int scheduleId, String label, String time) async {
+  await AwesomeNotifications().createNotification(
+    content: NotificationContent(
+      id: scheduleId,
+      channelKey: reminderNotificationChannelKey,
+      title: "Missed alarm${label.isEmpty ? "" : ": $label"}",
+      body: time,
+      category: NotificationCategory.Reminder,
+    ),
+  );
+}
+
 Future<void> removeAlarmNotification(ScheduledNotificationType type) async {
   logger.t("[removeAlarmNotification]");
   FullScreenNotificationData data = alarmNotificationData[type]!;

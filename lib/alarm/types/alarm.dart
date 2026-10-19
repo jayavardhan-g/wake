@@ -88,6 +88,8 @@ class Alarm extends CustomizableListItem {
   List<AlarmTask> get tasks => _settings.getSetting("Tasks").value;
   List<Tag> get tags => _settings.getSetting("Tags").value;
   int get maxSnoozes => _settings.getSetting("Max Snoozes").value.toInt();
+  Duration get ringDuration => Duration(
+      minutes: _settings.getSetting("Ring Duration").value.toInt());
   bool get canBeDisabledWhenSnoozed =>
       !_settings.getSetting("Prevent Disabling").value;
   bool get canBeDeletedWhenSnoozed =>

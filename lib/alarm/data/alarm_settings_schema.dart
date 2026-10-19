@@ -241,6 +241,19 @@ SettingGroup alarmSettingsSchema = SettingGroup(
       "Snooze",
       (context) => AppLocalizations.of(context)!.snoozeSettingGroup,
       [
+        // Applies even with snooze disabled: the alarm is then dismissed as
+        // missed instead of ringing forever.
+        SliderSetting(
+          "Ring Duration",
+          (context) => AppLocalizations.of(context)!.ringDurationSetting,
+          1,
+          30,
+          5,
+          unit: "minutes",
+          snapLength: 1,
+          getDescription: (context) =>
+              AppLocalizations.of(context)!.ringDurationSettingDescription,
+        ),
         SwitchSetting(
             "Enabled",
             (context) => AppLocalizations.of(context)!.snoozeEnableSetting,

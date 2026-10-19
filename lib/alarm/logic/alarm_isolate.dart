@@ -23,6 +23,11 @@ import 'package:clock_app/timer/utils/timer_id.dart';
 const String stopAlarmPortName = "stopAlarmPort";
 const String updatePortName = "updatePort";
 const String setAlarmVolumePortName = "setAlarmVolumePort";
+const String closeAlarmScreenMessage = "closeAlarmScreen";
+
+// Incremented each time an alarm starts ringing, so a ring duration timer
+// from an earlier ring can tell it has been superseded.
+int _ringCount = 0;
 
 @pragma('vm:entry-point')
 void triggerScheduledNotification(int scheduleId, Json params) async {
@@ -160,18 +165,50 @@ void triggerAlarm(int scheduleId, Json params) async {
 
   String timeFormatString = await loadTextFile("time_format_string");
   String title = alarm.label.isEmpty ? "Alarm Ringing..." : alarm.label;
+  String time = TimeOfDayUtils.decode(params['timeOfDay'])
+      .formatToString(timeFormatString);
+
+  _stopAlarmAfterRingDuration(
+      scheduleId, alarm.ringDuration, alarm.label, time);
 
   showAlarmNotification(
     type: ScheduledNotificationType.alarm,
     scheduleIds: [scheduleId],
     title: title,
-    body: TimeOfDayUtils.decode(params['timeOfDay'])
-        .formatToString(timeFormatString),
+    body: time,
     showSnoozeButton: alarm.canBeSnoozed,
     tasksRequired: alarm.tasks.isNotEmpty,
     snoozeActionLabel: "Snooze",
     dismissActionLabel: "Dismiss",
   );
+}
+
+// When an alarm is left ringing for its ring duration, snooze it like the
+// snooze button would. Once it can't be snoozed any more (max snoozes reached
+// or snooze disabled), dismiss it and leave a missed alarm notification.
+void _stopAlarmAfterRingDuration(
+    int scheduleId, Duration ringDuration, String label, String time) {
+  final ring = ++_ringCount;
+  Future.delayed(ringDuration, () async {
+    if (ring != _ringCount || RingingManager.ringingAlarmId != scheduleId) {
+      return;
+    }
+    Alarm? alarm = getAlarmById(scheduleId);
+    final action = (alarm?.canBeSnoozed ?? false)
+        ? AlarmStopAction.snooze
+        : AlarmStopAction.dismiss;
+    logger.i(
+        "[stopAlarmAfterRingDuration] Alarm $scheduleId rang for $ringDuration, stopping with action: ${action.name}");
+
+    RingtonePlayer.stop();
+    stopAlarm(scheduleId, action);
+    await removeAlarmNotification(ScheduledNotificationType.alarm);
+    IsolateNameServer.lookupPortByName(updatePortName)
+        ?.send(closeAlarmScreenMessage);
+    if (action == AlarmStopAction.dismiss) {
+      await showMissedAlarmNotification(scheduleId, label, time);
+    }
+  });
 }
 
 void setVolume(double volume) {
