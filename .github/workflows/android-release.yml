@@ -3,25 +3,24 @@ name: Android Release
 on:
   push:
     tags:
-    - '*'
+      - 'v*'
   workflow_dispatch:
 
-# 4
 jobs:
   build:
     runs-on: ubuntu-latest
-    permissions: write-all
+    permissions:
+      contents: write
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - uses: actions/setup-java@v3
+      - uses: actions/setup-java@v4
         with:
-          distribution: 'adopt'
+          distribution: 'temurin'
           java-version: "17"
-          # cache: 'gradle'
 
       - uses: subosito/flutter-action@v2
         with:
@@ -31,67 +30,34 @@ jobs:
 
       - name: Create key.properties
         run: |
-          echo keyPassword=\${{ secrets.KEY_PASSWORD }} > ./android/key.properties
-          echo storePassword=\${{ secrets.KEY_STORE_PASSWORD }} >> ./android/key.properties
-          echo keyAlias=\${{ secrets.KEY_ALIAS }} >> ./android/key.properties
+          echo "keyPassword=${{ secrets.KEY_PASSWORD }}" > ./android/key.properties
+          echo "storePassword=${{ secrets.KEY_STORE_PASSWORD }}" >> ./android/key.properties
+          echo "keyAlias=${{ secrets.KEY_ALIAS }}" >> ./android/key.properties
 
       - name: Load key
         run: echo "${{ secrets.KEYSTORE_JKS_RELEASE }}" | base64 --decode > android/app/release-key.jks
 
-      - name: Extract version from tag
-        uses: damienaicheh/extract-version-from-tag-action@v1.1.0
-
       - name: Turn off analytics
         run: flutter config --no-analytics
-
-      - name: Clear cache
-        run: |
-          flutter clean
-          rm -rf ~/.gradle/caches
 
       - name: Pub Get Packages
         run: flutter pub get
 
-      - name: Build APPBUNDLE
-        run: flutter build appbundle --flavor prod
-
       - name: Build APK
         run: flutter build apk --release --split-per-abi --flavor prod
 
-      - name: Build Changelog
-        id: github_release
-        uses: mikepenz/release-changelog-builder-action@v4.1.0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          configurationJson: |
-            {
-              "template": "#{{CHANGELOG}}\n\n<details>\n<summary>Uncategorized</summary>\n\n#{{UNCATEGORIZED}}\n</details>",
-              "categories": [
-                {
-                  "title": "## 🚀 Features",
-                  "labels": ["feature"]
-                },
-                {
-                  "enhancements": "## ✨ Enhancements"
-                  "labels": ["enhancement"]
-                },
-                {
-                  "title": "## 🐛 Fixes",
-                  "labels": ["bug"]
-                },
-                {
-                  "key": "tests",
-                  "title": "## 🧪 Tests",
-                  "labels": ["test"]
-                },
-              ],
-            }
+      - name: Rename APKs
+        run: |
+          cd build/app/outputs/flutter-apk
+          for f in app-*-prod-release.apk; do
+            abi=${f#app-}; abi=${abi%-prod-release.apk}
+            mv "$f" "wake-${GITHUB_REF_NAME}-${abi}.apk"
+          done
+          ls -l
 
-      - name: Create Github Release
+      - name: Create GitHub Release
         uses: ncipollo/release-action@v1
         with:
-          artifacts: "build/app/outputs/bundle/release/*.aab,build/app/outputs/flutter-apk/*.apk"
-          body: ${{steps.github_release.outputs.changelog}}
-          draft: true
-
+          artifacts: "build/app/outputs/flutter-apk/wake-*.apk"
+          generateReleaseNotes: true
+          prerelease: ${{ contains(github.ref_name, '-') }}

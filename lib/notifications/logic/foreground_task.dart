@@ -24,11 +24,14 @@ void initForegroundTask() {
       playSound: false,
     ),
     foregroundTaskOptions: const ForegroundTaskOptions(
+      // The service only keeps the process alive; alarms wake the device
+      // through AlarmManager.setAlarmClock. Holding a wake lock here kept the
+      // CPU out of deep sleep for as long as the notification was enabled.
       interval: 1000 * 60,
-      isOnceEvent: false,
+      isOnceEvent: true,
       autoRunOnBoot: true,
-      allowWakeLock: true,
-      allowWifiLock: true,
+      allowWakeLock: false,
+      allowWifiLock: false,
     ),
   );
 }
