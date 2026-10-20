@@ -37,13 +37,9 @@ class WakeRingerPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
     }
   }
 
+  // The sound starts first and the foreground service only once it plays, so a refused or
+  // failing service can never keep an alarm from ringing.
   private fun start(call: MethodCall): Boolean {
-    try {
-      RingService.start(context)
-    } catch (e: Exception) {
-      // Not allowed to start a foreground service now; ring anyway.
-      Log.e("WakeRinger", "Couldn't start the ringing service", e)
-    }
     val ringing =
       Ringer.start(
         context,
@@ -54,7 +50,13 @@ class WakeRingerPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         vibrate = call.argument<Boolean>("vibrate") ?: false,
         startAtRandomPosition = call.argument<Boolean>("startAtRandomPosition") ?: false,
       )
-    if (!ringing) RingService.stop()
-    return ringing
+    if (!ringing) return false
+    try {
+      RingService.start(context)
+    } catch (e: Exception) {
+      // Not allowed to start a foreground service now; keep ringing without it.
+      Log.e("WakeRinger", "Couldn't start the ringing service", e)
+    }
+    return true
   }
 }

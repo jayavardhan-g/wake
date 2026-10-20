@@ -34,6 +34,7 @@ internal object Ringer {
   private var player: MediaPlayer? = null
   private var vibrator: Vibrator? = null
   private var focusRequest: AudioFocusRequest? = null
+  private var attributes: AudioAttributes? = null
   private var targetVolume = 1f
 
   /** Starts ringing. Returns false if neither [uri] nor the system alarm sound would play. */
@@ -48,18 +49,19 @@ internal object Ringer {
   ): Boolean {
     stop(context)
 
-    val attributes =
+    val audioAttributes =
       AudioAttributes.Builder()
         .setUsage(usage)
         .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
         .build()
 
     val mediaPlayer =
-      prepare(context, parseUri(uri), attributes)
-        ?: prepare(context, Settings.System.DEFAULT_ALARM_ALERT_URI, attributes)
+      prepare(context, parseUri(uri), audioAttributes)
+        ?: prepare(context, Settings.System.DEFAULT_ALARM_ALERT_URI, audioAttributes)
         ?: return false
 
-    requestFocus(context, attributes)
+    attributes = audioAttributes
+    requestFocus(context)
     targetVolume = volume
     if (startAtRandomPosition && mediaPlayer.duration > 0) {
       mediaPlayer.seekTo(Random.nextInt(mediaPlayer.duration))
@@ -131,16 +133,20 @@ internal object Ringer {
   }
 
   // Focus is requested so music and video pause while the alarm rings. Losing it is ignored:
-  // the alarm keeps ringing until it is dismissed or snoozed.
-  private fun requestFocus(context: Context, attributes: AudioAttributes) {
+  // the alarm keeps ringing until it is dismissed or snoozed. Android ignores requests from
+  // background apps, so RingService asks again once it is in the foreground.
+  fun requestFocus(context: Context) {
+    // Cleared by stop(), so this does nothing once ringing has stopped.
+    val attributes = attributes ?: return
     val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     val result =
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
         val request =
-          AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
-            .setAudioAttributes(attributes)
-            .setOnAudioFocusChangeListener {}
-            .build()
+          focusRequest
+            ?: AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN_TRANSIENT)
+              .setAudioAttributes(attributes)
+              .setOnAudioFocusChangeListener {}
+              .build()
         focusRequest = request
         audioManager.requestAudioFocus(request)
       } else {
@@ -161,6 +167,7 @@ internal object Ringer {
       audioManager.abandonAudioFocus(null)
     }
     focusRequest = null
+    attributes = null
   }
 
   private fun startVibration(context: Context, usage: Int) {

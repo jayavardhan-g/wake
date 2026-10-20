@@ -65,7 +65,11 @@ class RingService : Service() {
       stopSelf()
       return START_NOT_STICKY
     }
-    if (stopRequested) stopForegroundAndSelf()
+    if (stopRequested) {
+      stopForegroundAndSelf()
+    } else {
+      Ringer.requestFocus(this)
+    }
     return START_NOT_STICKY
   }
 
