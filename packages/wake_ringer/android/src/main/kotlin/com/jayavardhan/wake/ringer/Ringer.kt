@@ -138,7 +138,7 @@ internal object Ringer {
   fun requestFocus(context: Context) {
     // Cleared by stop(), so this does nothing once ringing has stopped.
     val attributes = attributes ?: return
-    val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+    val audioManager = audioManager(context)
     val result =
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
         val request =
@@ -158,8 +158,14 @@ internal object Ringer {
     }
   }
 
+  // Android identifies a focus holder by the AudioManager instance that asked, and each Context
+  // (the service, the application) has its own. Using the application's for both requesting
+  // and abandoning is what lets abandoning actually release focus.
+  private fun audioManager(context: Context): AudioManager =
+    context.applicationContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+
   private fun abandonFocus(context: Context) {
-    val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+    val audioManager = audioManager(context)
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
       focusRequest?.let { audioManager.abandonAudioFocusRequest(it) }
     } else {
