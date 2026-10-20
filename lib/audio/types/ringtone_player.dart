@@ -8,6 +8,7 @@ import 'package:clock_app/developer/logic/logger.dart';
 import 'package:clock_app/timer/types/timer.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:vibration/vibration.dart';
+import 'package:wake_ringer/wake_ringer.dart';
 
 Random random = Random();
 
@@ -18,6 +19,8 @@ class RingtonePlayer {
   static AudioPlayer? activePlayer;
   static bool _vibratorIsAvailable = false;
   static bool _stopRisingVolume = false;
+  // An alarm or timer is ringing through WakeRinger rather than just_audio.
+  static bool _ringingNatively = false;
 
   // Bundled with the app, so it can always be played if the chosen melody
   // can't be (missing file, revoked permission, unsupported format).
@@ -68,6 +71,40 @@ class RingtonePlayer {
     }
   }
 
+  // Rings through the native foreground-service ringer (packages/wake_ringer).
+  // Returns false if it couldn't, so the caller falls back to just_audio.
+  static Future<bool> _ringNatively(
+    String uri,
+    AndroidAudioUsage usage, {
+    required double volume,
+    required int secondsToMaxVolume,
+    required bool vibrate,
+    bool startAtRandomPos = false,
+  }) async {
+    final ringing = await WakeRinger.start(
+      uri: uri,
+      usage: usage.value,
+      volume: volume,
+      secondsToMaxVolume: secondsToMaxVolume,
+      vibrate: vibrate,
+      startAtRandomPosition: startAtRandomPos,
+    );
+    if (ringing) {
+      _ringingNatively = true;
+      RingtoneManager.lastPlayedRingtoneUri = uri;
+      logger.t("Ringing natively: $uri");
+    } else {
+      logger.w("Native ringer couldn't play $uri, using just_audio");
+    }
+    return ringing;
+  }
+
+  static Future<void> _stopNative() async {
+    if (!_ringingNatively) return;
+    _ringingNatively = false;
+    await WakeRinger.stop();
+  }
+
   static Future<void> playUri(String ringtoneUri,
       {bool vibrate = false,
       LoopMode loopMode = LoopMode.one,
@@ -81,6 +118,19 @@ class RingtonePlayer {
   static Future<void> playAlarm(Alarm alarm,
       {LoopMode loopMode = LoopMode.one}) async {
     await activePlayer?.stop();
+    await _stopNative();
+    String uri = await getRingtoneUri(alarm.ringtone);
+
+    logger.t("Playing alarm with uri: $uri");
+
+    if (await _ringNatively(uri, alarm.audioChannel,
+        volume: alarm.volume / 100,
+        secondsToMaxVolume: alarm.risingVolumeDuration.inSeconds,
+        vibrate: alarm.vibrate,
+        startAtRandomPos: alarm.shouldStartMelodyAtRandomPos)) {
+      return;
+    }
+
     await _alarmPlayer?.dispose();
     _alarmPlayer = _createRingingPlayer();
     await _alarmPlayer?.setAndroidAudioAttributes(AndroidAudioAttributes(
@@ -89,9 +139,6 @@ class RingtonePlayer {
     ));
     activePlayer = _alarmPlayer;
     await _requestAudioFocus(alarm.audioChannel);
-    String uri = await getRingtoneUri(alarm.ringtone);
-
-    logger.t("Playing alarm with uri: $uri");
 
     await _play(uri,
         vibrate: alarm.vibrate,
@@ -104,6 +151,14 @@ class RingtonePlayer {
 
   static Future<void> playTimer(ClockTimer timer,
       {LoopMode loopMode = LoopMode.one}) async {
+    await _stopNative();
+    if (await _ringNatively(timer.ringtone.uri, timer.audioChannel,
+        volume: timer.volume / 100,
+        secondsToMaxVolume: timer.risingVolumeDuration.inSeconds,
+        vibrate: timer.vibrate)) {
+      return;
+    }
+
     await _timerPlayer?.setAndroidAudioAttributes(AndroidAudioAttributes(
       usage: timer.audioChannel,
       contentType: AndroidAudioContentType.music,
@@ -123,6 +178,10 @@ class RingtonePlayer {
   static Future<void> setVolume(double volume) async {
     logger.t("Setting volume to $volume");
     _stopRisingVolume = true;
+    if (_ringingNatively) {
+      await WakeRinger.setVolume(volume);
+      return;
+    }
     await activePlayer?.setVolume(volume);
   }
 
@@ -228,7 +287,10 @@ class RingtonePlayer {
     });
   }
 
+  // Native ringing can't be resumed, so it is stopped; the caller replays the
+  // timer with playTimer() afterwards.
   static Future<void> pause() async {
+    await _stopNative();
     await activePlayer?.pause();
     if (_vibratorIsAvailable) {
       await Vibration.cancel();
@@ -236,6 +298,7 @@ class RingtonePlayer {
   }
 
   static Future<void> stop() async {
+    await _stopNative();
     await activePlayer?.stop();
     final session = await AudioSession.instance;
     await session.setActive(false);
