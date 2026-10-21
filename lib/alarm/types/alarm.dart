@@ -240,6 +240,9 @@ class Alarm extends CustomizableListItem {
       ScheduledNotificationType.alarm,
       "_scheduleSnooze(): Alarm snoozed for $snoozeLength minutes",
     );
+    // The snooze may ring before the first unlock after a reboot, and ringing
+    // disabled a one-time alarm, which removed its locked-alarm config.
+    await saveLockedAlarmConfig(this);
   }
 
   Future<void> cancelSnooze() async {
