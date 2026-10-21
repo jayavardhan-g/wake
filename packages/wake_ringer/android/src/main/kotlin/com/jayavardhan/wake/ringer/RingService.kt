@@ -31,10 +31,16 @@ class RingService : Service() {
     private var instance: RingService? = null
     // stop() was called after start() but before onStartCommand ran.
     private var stopRequested = false
+    // Shown instead of the generic "Ringing" notification, e.g. a locked alarm's own.
+    private var customNotification: Pair<Int, Notification>? = null
 
-    /** Throws if Android doesn't allow starting a foreground service right now. */
-    fun start(context: Context) {
+    /**
+     * Throws if Android doesn't allow starting a foreground service right now. [notification]
+     * replaces the generic "Ringing" one, under [notificationId].
+     */
+    fun start(context: Context, notificationId: Int = NOTIFICATION_ID, notification: Notification? = null) {
       stopRequested = false
+      customNotification = notification?.let { notificationId to it }
       ContextCompat.startForegroundService(context, Intent(context, RingService::class.java))
     }
 
@@ -55,10 +61,11 @@ class RingService : Service() {
     try {
       // startForegroundService() must always be followed by startForeground(), even when
       // the ringing already stopped.
+      val (id, notification) = customNotification ?: (NOTIFICATION_ID to buildNotification())
       if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-        startForeground(NOTIFICATION_ID, buildNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
+        startForeground(id, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
       } else {
-        startForeground(NOTIFICATION_ID, buildNotification())
+        startForeground(id, notification)
       }
     } catch (e: Exception) {
       Log.e(TAG, "Couldn't enter the foreground; ringing continues without it", e)

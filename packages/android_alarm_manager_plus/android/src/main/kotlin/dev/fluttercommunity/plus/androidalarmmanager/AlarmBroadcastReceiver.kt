@@ -6,7 +6,11 @@ package dev.fluttercommunity.plus.androidalarmmanager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.os.PowerManager
+import android.os.UserManager
+import org.json.JSONException
+import org.json.JSONObject
 
 class AlarmBroadcastReceiver : BroadcastReceiver() {
   /**
@@ -35,11 +39,43 @@ class AlarmBroadcastReceiver : BroadcastReceiver() {
     powerManager
       .newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "wake:alarm_start")
       .acquire(WAKE_LOCK_TIMEOUT_MS)
+    if (!isUserUnlocked(context)) {
+      handOffLockedAlarm(context, intent)
+      return
+    }
     val pendingResult = goAsync()
     AlarmService.handleAlarmNow(context.applicationContext, intent) { pendingResult.finish() }
   }
 
+  // Before the first unlock after a reboot the Flutter app can't run (its data is in
+  // credential-protected storage), so the alarm is rung natively by Wake's
+  // LockedAlarmReceiver instead. It is removed from the persistent alarms first so the
+  // reschedule at BOOT_COMPLETED doesn't ring it a second time through Flutter.
+  private fun handOffLockedAlarm(context: Context, intent: Intent) {
+    val id = intent.getIntExtra("id", -1)
+    AlarmService.clearPersistentAlarm(context, id)
+    val params =
+      try {
+        JSONObject(intent.getStringExtra("params") ?: "{}")
+      } catch (e: JSONException) {
+        JSONObject()
+      }
+    val locked =
+      Intent(LOCKED_ALARM_ACTION)
+        .setClassName(context.packageName, LOCKED_ALARM_RECEIVER)
+        .putExtra("id", id)
+        .putExtra("type", params.optString("type"))
+        .putExtra("timeOfDay", params.optString("timeOfDay"))
+    context.sendBroadcast(locked)
+  }
+
+  private fun isUserUnlocked(context: Context): Boolean =
+    Build.VERSION.SDK_INT < Build.VERSION_CODES.N ||
+      context.getSystemService(UserManager::class.java).isUserUnlocked
+
   companion object {
     private const val WAKE_LOCK_TIMEOUT_MS = 60_000L
+    private const val LOCKED_ALARM_ACTION = "com.jayavardhan.wake.ringer.RING"
+    private const val LOCKED_ALARM_RECEIVER = "com.jayavardhan.wake.ringer.LockedAlarmReceiver"
   }
 }

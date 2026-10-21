@@ -10,5 +10,10 @@
       android:exported="false"
       android:directBootAware="true"
       android:foregroundServiceType="mediaPlayback" />
+    <!-- Rings alarms before the first unlock after a reboot; only Wake itself sends to it. -->
+    <receiver
+      android:name="com.jayavardhan.wake.ringer.LockedAlarmReceiver"
+      android:exported="false"
+      android:directBootAware="true" />
   </application>
 </manifest>

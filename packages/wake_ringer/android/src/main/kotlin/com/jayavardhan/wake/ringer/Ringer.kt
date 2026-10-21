@@ -29,6 +29,7 @@ import kotlin.random.Random
 internal object Ringer {
   private const val TAG = "WakeRinger"
   private const val RAMP_STEP_MS = 1000L
+  private const val BUNDLED_RINGTONE = "flutter_assets/assets/ringtones/default.mp3"
 
   private val handler = Handler(Looper.getMainLooper())
   private var player: MediaPlayer? = null
@@ -56,8 +57,16 @@ internal object Ringer {
         .build()
 
     val mediaPlayer =
-      prepare(context, parseUri(uri), audioAttributes)
-        ?: prepare(context, Settings.System.DEFAULT_ALARM_ALERT_URI, audioAttributes)
+      prepare(context, audioAttributes, uri) { it.setDataSource(context, parseUri(uri)) }
+        ?: prepare(context, audioAttributes, "system alarm sound") {
+          it.setDataSource(context, Settings.System.DEFAULT_ALARM_ALERT_URI)
+        }
+        // Inside the APK, so readable even before the first unlock after a reboot.
+        ?: prepare(context, audioAttributes, BUNDLED_RINGTONE) { player ->
+          context.assets.openFd(BUNDLED_RINGTONE).use {
+            player.setDataSource(it.fileDescriptor, it.startOffset, it.length)
+          }
+        }
         ?: return false
 
     attributes = audioAttributes
@@ -108,18 +117,23 @@ internal object Ringer {
   private fun parseUri(uri: String): Uri =
     if (uri.startsWith("/")) Uri.fromFile(File(uri)) else Uri.parse(uri)
 
-  private fun prepare(context: Context, uri: Uri, attributes: AudioAttributes): MediaPlayer? {
+  private fun prepare(
+    context: Context,
+    attributes: AudioAttributes,
+    source: String,
+    setDataSource: (MediaPlayer) -> Unit,
+  ): MediaPlayer? {
     val mediaPlayer = MediaPlayer()
     return try {
       mediaPlayer.setAudioAttributes(attributes)
-      mediaPlayer.setDataSource(context, uri)
+      setDataSource(mediaPlayer)
       mediaPlayer.isLooping = true
       // Keeps the CPU awake only while the player is actually playing.
       mediaPlayer.setWakeMode(context, PowerManager.PARTIAL_WAKE_LOCK)
       mediaPlayer.prepare()
       mediaPlayer
     } catch (e: Exception) {
-      Log.e(TAG, "Can't play $uri", e)
+      Log.e(TAG, "Can't play $source", e)
       mediaPlayer.release()
       null
     }

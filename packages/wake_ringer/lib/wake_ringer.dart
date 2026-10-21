@@ -47,4 +47,55 @@ class WakeRinger {
       // Nothing was started natively.
     }
   }
+
+  /// Saves how to ring the alarm schedule [id] if it fires before the first
+  /// unlock after a reboot, when this app can't run. Stored in
+  /// device-protected storage with a copy of [ringtoneUri], so it takes no
+  /// label on purpose. [usage] is an Android `AudioAttributes` usage.
+  static Future<void> saveLockedAlarm({
+    required int id,
+    required String ringtoneUri,
+    required int usage,
+    required double volume,
+    required int secondsToMaxVolume,
+    required bool vibrate,
+    required int ringMinutes,
+    required bool snoozeEnabled,
+    required int snoozeMinutes,
+    required int maxSnoozes,
+  }) async {
+    await _invoke('saveLockedAlarm', {
+      'id': id,
+      'ringtoneUri': ringtoneUri,
+      'usage': usage,
+      'volume': volume,
+      'secondsToMaxVolume': secondsToMaxVolume,
+      'vibrate': vibrate,
+      'ringMinutes': ringMinutes,
+      'snoozeEnabled': snoozeEnabled,
+      'snoozeMinutes': snoozeMinutes,
+      'maxSnoozes': maxSnoozes,
+    });
+  }
+
+  static Future<void> removeLockedAlarm(int id) async {
+    await _invoke('removeLockedAlarm', {'id': id});
+  }
+
+  /// Deletes melody copies no saved locked alarm uses any more.
+  static Future<void> pruneLockedRingtones() async {
+    await _invoke('pruneLockedRingtones');
+  }
+
+  // Locked-alarm bookkeeping must never break scheduling, e.g. in tests where
+  // the plugin isn't registered.
+  static Future<void> _invoke(String method, [Object? arguments]) async {
+    try {
+      await _channel.invokeMethod(method, arguments);
+    } on MissingPluginException {
+      // No native side.
+    } on PlatformException {
+      // Logged natively.
+    }
+  }
 }

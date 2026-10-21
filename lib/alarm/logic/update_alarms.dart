@@ -2,6 +2,7 @@ import 'dart:isolate';
 import 'dart:ui';
 
 import 'package:clock_app/alarm/logic/alarm_isolate.dart';
+import 'package:clock_app/alarm/logic/locked_alarms.dart';
 import 'package:clock_app/alarm/logic/schedule_alarm.dart';
 import 'package:clock_app/alarm/types/alarm.dart';
 import 'package:clock_app/common/types/notification_type.dart';
@@ -53,6 +54,10 @@ Future<void> updateAlarms(String description) async {
   alarms.removeWhere((alarm) => alarm.isMarkedForDeletion);
 
   await saveList("alarms", alarms);
+
+  // Every alarm has been cancelled and rescheduled, so copies of melodies no
+  // alarm uses any more can go.
+  await pruneLockedAlarmRingtones();
 
   // Notify other isolates that are listening for alarm updates
   SendPort? sendPort = IsolateNameServer.lookupPortByName(updatePortName);

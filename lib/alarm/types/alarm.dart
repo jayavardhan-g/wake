@@ -1,5 +1,6 @@
 import 'package:audio_session/audio_session.dart';
 import 'package:clock_app/alarm/logic/alarm_reminder_notifications.dart';
+import 'package:clock_app/alarm/logic/locked_alarms.dart';
 import 'package:clock_app/alarm/logic/schedule_alarm.dart';
 import 'package:clock_app/alarm/types/alarm_runner.dart';
 import 'package:clock_app/alarm/types/alarm_task.dart';
@@ -88,6 +89,8 @@ class Alarm extends CustomizableListItem {
   List<AlarmTask> get tasks => _settings.getSetting("Tasks").value;
   List<Tag> get tags => _settings.getSetting("Tags").value;
   int get maxSnoozes => _settings.getSetting("Max Snoozes").value.toInt();
+  bool get snoozeEnabled =>
+      _settings.getGroup("Snooze").getSetting("Enabled").value;
   Duration get ringDuration => Duration(
       minutes: _settings.getSetting("Ring Duration").value.toInt());
   bool get canBeDisabledWhenSnoozed =>
@@ -262,6 +265,7 @@ class Alarm extends CustomizableListItem {
         await schedule.cancel();
       }
     }
+    await saveLockedAlarmConfig(this);
     updateReminderNotification();
   }
 
