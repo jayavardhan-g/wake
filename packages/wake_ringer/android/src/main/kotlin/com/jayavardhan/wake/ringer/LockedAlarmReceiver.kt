@@ -94,7 +94,7 @@ class LockedAlarmReceiver : BroadcastReceiver() {
     val config = LockedAlarms.get(context, id)
     stopRinging(context, id)
     val at = System.currentTimeMillis() + config.snoozeMinutes * 60_000L
-    alarmManager(context).setAlarmClock(AlarmManager.AlarmClockInfo(at, null), pending(context, ACTION_RING, id, snoozes + 1))
+    alarmClock(context, at, pending(context, ACTION_RING, id, snoozes + 1))
     val until = DateFormat.getTimeFormat(context).format(Date(at))
     notificationManager(context).notify(
       NOTIFICATION_TAG,
@@ -193,12 +193,28 @@ class LockedAlarmReceiver : BroadcastReceiver() {
     return PendingIntent.getBroadcast(context, 0, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
   }
 
+  // Wake holds USE_EXACT_ALARM, but if exact alarms were ever refused, a crash here would stop
+  // a ringing alarm: fall back to an inexact one instead.
   private fun exactAlarm(context: Context, at: Long, operation: PendingIntent) {
     val manager = alarmManager(context)
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-      manager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, operation)
-    } else {
-      manager.setExact(AlarmManager.RTC_WAKEUP, at, operation)
+    try {
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+        manager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, operation)
+      } else {
+        manager.setExact(AlarmManager.RTC_WAKEUP, at, operation)
+      }
+    } catch (e: SecurityException) {
+      Log.e(TAG, "Exact alarms not allowed, scheduling an inexact one", e)
+      manager.set(AlarmManager.RTC_WAKEUP, at, operation)
+    }
+  }
+
+  private fun alarmClock(context: Context, at: Long, operation: PendingIntent) {
+    try {
+      alarmManager(context).setAlarmClock(AlarmManager.AlarmClockInfo(at, null), operation)
+    } catch (e: SecurityException) {
+      Log.e(TAG, "Exact alarms not allowed, scheduling the snooze as an inexact one", e)
+      alarmManager(context).set(AlarmManager.RTC_WAKEUP, at, operation)
     }
   }
 

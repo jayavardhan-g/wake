@@ -86,7 +86,7 @@ internal object LockedAlarms {
   /** Deletes melody copies that no saved alarm uses any more. */
   fun pruneRingtones(context: Context) {
     val used =
-      preferences(context).all.values.mapNotNullTo(HashSet()) { value ->
+      preferences(context).all.values.mapNotNullTo(HashSet<String>()) { value ->
         try {
           JSONObject(value as? String ?: return@mapNotNullTo null).optString("ringtonePath")
         } catch (e: JSONException) {
