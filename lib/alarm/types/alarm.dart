@@ -328,6 +328,18 @@ class Alarm extends CustomizableListItem {
 
   Future<void> update(String description) async {
     if (isEnabled) {
+      // A one-time alarm that rang was disabled, which clears its schedule, and
+      // is only enabled again by snoozing it. Once that snooze has passed the
+      // alarm is done: scheduling it would find no past schedule and ring it
+      // again the next day.
+      if (scheduleType == OnceAlarmSchedule &&
+          activeSchedule.currentScheduleDateTime == null &&
+          isSnoozed &&
+          DateTime.now().isAfter(_snoozeTime!)) {
+        await disable();
+        return;
+      }
+
       if (_skippedTime != null &&
           _skippedTime!.millisecondsSinceEpoch <
               DateTime.now().millisecondsSinceEpoch) {
