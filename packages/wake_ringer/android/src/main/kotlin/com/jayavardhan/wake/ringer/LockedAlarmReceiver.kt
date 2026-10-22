@@ -132,7 +132,11 @@ class LockedAlarmReceiver : BroadcastReceiver() {
     notificationManager(context).notify(
       NOTIFICATION_TAG,
       notificationId(id),
-      baseNotification(context, "Alarm snoozed", "Until $until")
+      baseNotification(
+        context,
+        "Alarm snoozed",
+        alarmTime(context, id)?.let { "$it alarm, until $until" } ?: "Until $until",
+      )
         .addAction(0, "Dismiss", pending(context, ACTION_DISMISS, id))
         .build(),
     )
@@ -170,7 +174,7 @@ class LockedAlarmReceiver : BroadcastReceiver() {
 
   // [dueAt]: when the alarm should have rung, which is what the notification shows.
   private fun postMissed(context: Context, id: Int, dueAt: Long = System.currentTimeMillis()) {
-    val time = DateFormat.getTimeFormat(context).format(Date(dueAt))
+    val time = alarmTime(context, id) ?: DateFormat.getTimeFormat(context).format(Date(dueAt))
     notificationManager(context).notify(
       NOTIFICATION_TAG,
       notificationId(id),
@@ -181,7 +185,11 @@ class LockedAlarmReceiver : BroadcastReceiver() {
   private fun ringingNotification(context: Context, id: Int, snoozes: Int): Notification {
     val config = LockedAlarms.get(context, id)
     val builder =
-      baseNotification(context, "Alarm", DateFormat.getTimeFormat(context).format(Date()))
+      baseNotification(
+        context,
+        if (snoozes > 0) "Alarm (snoozed)" else "Alarm",
+        alarmTime(context, id) ?: DateFormat.getTimeFormat(context).format(Date()),
+      )
         .setOngoing(true)
         .setPriority(NotificationCompat.PRIORITY_MAX)
         // Swiping it away while ringing would leave no way to stop the alarm: post it again.
@@ -210,6 +218,19 @@ class LockedAlarmReceiver : BroadcastReceiver() {
       .setContentText(text)
       .setCategory(NotificationCompat.CATEGORY_ALARM)
       .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+  }
+
+  // The alarm's set time in the user's time format, which identifies it since labels aren't
+  // kept; null if it wasn't saved.
+  private fun alarmTime(context: Context, id: Int): String? {
+    val minuteOfDay = LockedAlarms.get(context, id).minuteOfDay
+    if (minuteOfDay < 0) return null
+    val time =
+      Calendar.getInstance().apply {
+        set(Calendar.HOUR_OF_DAY, minuteOfDay / 60)
+        set(Calendar.MINUTE, minuteOfDay % 60)
+      }
+    return DateFormat.getTimeFormat(context).format(time.time)
   }
 
   // Alarm schedule ids are large random ints, also used by Wake's other notifications as ids.

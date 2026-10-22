@@ -66,6 +66,7 @@ class WakeRingerPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         snoozeEnabled = call.argument<Boolean>("snoozeEnabled") ?: LockedAlarms.DEFAULT.snoozeEnabled,
         snoozeMinutes = call.argument<Int>("snoozeMinutes") ?: LockedAlarms.DEFAULT.snoozeMinutes,
         maxSnoozes = call.argument<Int>("maxSnoozes") ?: LockedAlarms.DEFAULT.maxSnoozes,
+        minuteOfDay = call.argument<Int>("minuteOfDay") ?: -1,
       ),
     )
   }

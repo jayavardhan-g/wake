@@ -37,10 +37,12 @@ internal object LockedAlarms {
     val snoozeEnabled: Boolean,
     val snoozeMinutes: Int,
     val maxSnoozes: Int,
+    // The alarm's set time, shown in its notifications instead of a label; -1 if unknown.
+    val minuteOfDay: Int,
   )
 
   // Used when an alarm has no saved config, e.g. one scheduled before this feature existed.
-  val DEFAULT = Config("", AudioAttributes.USAGE_ALARM, 1f, 0, true, 5, true, 5, 3)
+  val DEFAULT = Config("", AudioAttributes.USAGE_ALARM, 1f, 0, true, 5, true, 5, 3, -1)
 
   /** Saves [config] for alarm [id], copying [ringtoneUri]. Slow (file copy): not on the main thread. */
   fun save(context: Context, id: Int, ringtoneUri: String, config: Config) {
@@ -56,6 +58,7 @@ internal object LockedAlarms {
         .put("snoozeEnabled", config.snoozeEnabled)
         .put("snoozeMinutes", config.snoozeMinutes)
         .put("maxSnoozes", config.maxSnoozes)
+        .put("minuteOfDay", config.minuteOfDay)
     preferences(context).edit().putString(id.toString(), json.toString()).apply()
   }
 
@@ -77,6 +80,7 @@ internal object LockedAlarms {
         snoozeEnabled = json.optBoolean("snoozeEnabled", DEFAULT.snoozeEnabled),
         snoozeMinutes = json.optInt("snoozeMinutes", DEFAULT.snoozeMinutes).coerceAtLeast(1),
         maxSnoozes = json.optInt("maxSnoozes", DEFAULT.maxSnoozes),
+        minuteOfDay = json.optInt("minuteOfDay", -1),
       )
     } catch (e: JSONException) {
       Log.e(TAG, "Invalid config for alarm $id", e)

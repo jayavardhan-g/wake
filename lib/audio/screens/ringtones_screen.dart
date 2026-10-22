@@ -99,18 +99,23 @@ class _RingtonesScreenState extends State<RingtonesScreen> {
 
                   // The result will be null, if the user aborted the dialog
                   if (result != null && result.files.isNotEmpty) {
-                    // Files saved in this import, which may not be in the
-                    // saved list yet.
-                    final imported = <Uint8List>[];
+                    // Files saved in this import (content to name), which may
+                    // not be in the saved list yet.
+                    final imported = <Uint8List, String>{};
                     for (PlatformFile file in result.files) {
                       final bytes = await file.xFile.readAsBytes();
-                      final existing = await findMelodyWithContent(bytes);
-                      if (existing != null ||
-                          imported.any((other) => listEquals(other, bytes))) {
-                        logger.t("Not saving melody ${file.name}: already added");
+                      final existingName =
+                          (await findMelodyWithContent(bytes))?.name ??
+                              imported.entries
+                                  .where((e) => listEquals(e.key, bytes))
+                                  .map((e) => e.value)
+                                  .firstOrNull;
+                      if (existingName != null) {
+                        logger.t(
+                            "Not saving melody ${file.name}: same as $existingName");
                         if (context.mounted) {
                           showSnackBar(context,
-                              "${file.name} is already in your melodies");
+                              "${file.name} is the same as $existingName, already in your melodies");
                         }
                         continue;
                       }
@@ -119,7 +124,7 @@ class _RingtonesScreenState extends State<RingtonesScreen> {
                           FileItem(file.name, "", FileItemType.audio);
                       fileItem.uri =
                           await saveRingtone(fileItem.id.toString(), bytes);
-                      imported.add(bytes);
+                      imported[bytes] = file.name;
                       _listController.addItem(fileItem);
                     }
                   }

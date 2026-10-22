@@ -57,8 +57,11 @@ class WakeRinger {
   /// Saves how to ring the alarm schedule [id] if it fires before the first
   /// unlock after a reboot, when this app can't run. Stored in
   /// device-protected storage with a copy of [ringtoneUri], so it takes no
-  /// label on purpose. [usage] is an Android `AudioAttributes` usage.
+  /// label on purpose; [minuteOfDay] (the alarm's set time) identifies the
+  /// alarm in its notifications instead. [usage] is an Android
+  /// `AudioAttributes` usage.
   static Future<void> saveLockedAlarm({
+    required int minuteOfDay,
     required int id,
     required String ringtoneUri,
     required int usage,
@@ -81,6 +84,7 @@ class WakeRinger {
       'snoozeEnabled': snoozeEnabled,
       'snoozeMinutes': snoozeMinutes,
       'maxSnoozes': maxSnoozes,
+      'minuteOfDay': minuteOfDay,
     });
   }
 

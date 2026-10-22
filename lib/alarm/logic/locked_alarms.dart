@@ -25,6 +25,7 @@ Future<void> saveLockedAlarmConfig(Alarm alarm) async {
         snoozeEnabled: alarm.snoozeEnabled,
         snoozeMinutes: alarm.snoozeLength.floor(),
         maxSnoozes: alarm.maxSnoozes,
+        minuteOfDay: alarm.time.hour * 60 + alarm.time.minute,
       );
     }
   } catch (e) {
