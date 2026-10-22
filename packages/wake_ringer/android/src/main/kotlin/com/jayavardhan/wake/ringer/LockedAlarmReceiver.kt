@@ -62,9 +62,10 @@ class LockedAlarmReceiver : BroadcastReceiver() {
   private fun ring(context: Context, id: Int, snoozes: Int, timeOfDay: String?) {
     // If this is a snooze, it's ringing now and no longer needs restoring after a reboot.
     LockedAlarms.removeSnooze(context, id)
-    if (minutesLate(timeOfDay) > MAX_LATE_MINUTES) {
-      Log.i(TAG, "Alarm $id is more than $MAX_LATE_MINUTES minutes late, reporting it as missed")
-      postMissed(context, id)
+    val late = minutesLate(timeOfDay)
+    if (late > MAX_LATE_MINUTES) {
+      Log.i(TAG, "Alarm $id is $late minutes late, reporting it as missed")
+      postMissed(context, id, System.currentTimeMillis() - late * 60_000L)
       return
     }
     // One alarm rings at a time: a newer one replaces it.
@@ -120,7 +121,7 @@ class LockedAlarmReceiver : BroadcastReceiver() {
         now - snooze.at <= MAX_LATE_MINUTES * 60_000L -> ring(context, snooze.id, snooze.snoozes, null)
         else -> {
           LockedAlarms.removeSnooze(context, snooze.id)
-          postMissed(context, snooze.id)
+          postMissed(context, snooze.id, snooze.at)
         }
       }
     }
@@ -167,8 +168,9 @@ class LockedAlarmReceiver : BroadcastReceiver() {
     }
   }
 
-  private fun postMissed(context: Context, id: Int) {
-    val time = DateFormat.getTimeFormat(context).format(Date())
+  // [dueAt]: when the alarm should have rung, which is what the notification shows.
+  private fun postMissed(context: Context, id: Int, dueAt: Long = System.currentTimeMillis()) {
+    val time = DateFormat.getTimeFormat(context).format(Date(dueAt))
     notificationManager(context).notify(
       NOTIFICATION_TAG,
       notificationId(id),
