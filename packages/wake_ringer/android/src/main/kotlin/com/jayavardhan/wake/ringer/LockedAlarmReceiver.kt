@@ -21,8 +21,8 @@ import java.util.Date
  * android_alarm_manager_plus's AlarmBroadcastReceiver hands them over with [ACTION_RING]. Snooze,
  * dismiss and auto-snooze after the ring duration are handled here as well, without Flutter.
  *
- * Settings come from [LockedAlarms]. The notification says only "Alarm": labels aren't kept in
- * device-protected storage.
+ * Settings come from [LockedAlarms]. Notifications identify the alarm by its set time: labels
+ * aren't kept in device-protected storage.
  */
 class LockedAlarmReceiver : BroadcastReceiver() {
   companion object {
@@ -39,8 +39,12 @@ class LockedAlarmReceiver : BroadcastReceiver() {
     // A handed-over alarm this late (e.g. the phone was off) is reported as missed instead.
     private const val MAX_LATE_MINUTES = 60
 
-    // The alarm ringing in this process.
+    // The alarm ringing in this process, the config it rings with and whether it's a snooze.
+    // Flutter replaces or removes saved configs whenever it reschedules its alarms (e.g. right
+    // after unlock), which mustn't change an alarm that's already ringing.
     private var ringingId: Int? = null
+    private var ringingConfig: LockedAlarms.Config? = null
+    private var ringingIsSnooze = false
   }
 
   override fun onReceive(context: Context, intent: Intent) {
@@ -60,18 +64,19 @@ class LockedAlarmReceiver : BroadcastReceiver() {
   }
 
   private fun ring(context: Context, id: Int, snoozes: Int, timeOfDay: String?) {
-    // If this is a snooze, it's ringing now and no longer needs restoring after a reboot.
+    // A snooze from a locked alarm rings with the config it was snoozed with, and no longer
+    // needs restoring after a reboot.
+    val config = LockedAlarms.snooze(context, id)?.config ?: LockedAlarms.get(context, id)
     LockedAlarms.removeSnooze(context, id)
     val late = minutesLate(timeOfDay)
     if (late > MAX_LATE_MINUTES) {
       Log.i(TAG, "Alarm $id is $late minutes late, reporting it as missed")
-      postMissed(context, id, System.currentTimeMillis() - late * 60_000L)
+      postMissed(context, config, id, System.currentTimeMillis() - late * 60_000L)
       return
     }
     // One alarm rings at a time: a newer one replaces it.
     ringingId?.let { if (it != id) stopRinging(context, it) }
 
-    val config = LockedAlarms.get(context, id)
     val ringing =
       Ringer.start(
         context,
@@ -84,6 +89,10 @@ class LockedAlarmReceiver : BroadcastReceiver() {
       )
     if (!ringing) Log.e(TAG, "Nothing could be played for alarm $id")
     ringingId = id
+    ringingConfig = config
+    // A snooze set in Flutter is handed over like any alarm, at a time other than the alarm's.
+    ringingIsSnooze = snoozes > 0 || isOtherThanAlarmTime(timeOfDay, config)
+    LockedAlarms.ringingRingtonePath = config.ringtonePath
     Log.i(TAG, "Ringing alarm $id before unlock (snoozed $snoozes times)")
 
     val notification = ringingNotification(context, id, snoozes)
@@ -97,12 +106,13 @@ class LockedAlarmReceiver : BroadcastReceiver() {
   }
 
   private fun snooze(context: Context, id: Int, snoozes: Int) {
-    val config = LockedAlarms.get(context, id)
-    stopRinging(context, id)
+    val config = configFor(context, id)
     val at = System.currentTimeMillis() + config.snoozeMinutes * 60_000L
+    // Saved before ringing stops, so the melody copy is always referenced.
+    LockedAlarms.saveSnooze(context, LockedAlarms.Snooze(id, at, snoozes + 1, config))
+    stopRinging(context, id)
     alarmClock(context, at, pending(context, ACTION_RING, id, snoozes + 1))
-    LockedAlarms.saveSnooze(context, LockedAlarms.Snooze(id, at, snoozes + 1))
-    postSnoozed(context, id, at)
+    postSnoozed(context, config, id, at)
     Log.i(TAG, "Snoozed alarm $id until $at")
   }
 
@@ -116,18 +126,18 @@ class LockedAlarmReceiver : BroadcastReceiver() {
       when {
         snooze.at > now -> {
           alarmClock(context, snooze.at, pending(context, ACTION_RING, snooze.id, snooze.snoozes))
-          postSnoozed(context, snooze.id, snooze.at)
+          postSnoozed(context, snooze.config, snooze.id, snooze.at)
         }
         now - snooze.at <= MAX_LATE_MINUTES * 60_000L -> ring(context, snooze.id, snooze.snoozes, null)
         else -> {
           LockedAlarms.removeSnooze(context, snooze.id)
-          postMissed(context, snooze.id, snooze.at)
+          postMissed(context, snooze.config, snooze.id, snooze.at)
         }
       }
     }
   }
 
-  private fun postSnoozed(context: Context, id: Int, at: Long) {
+  private fun postSnoozed(context: Context, config: LockedAlarms.Config, id: Int, at: Long) {
     val until = DateFormat.getTimeFormat(context).format(Date(at))
     notificationManager(context).notify(
       NOTIFICATION_TAG,
@@ -135,7 +145,7 @@ class LockedAlarmReceiver : BroadcastReceiver() {
       baseNotification(
         context,
         "Alarm snoozed",
-        alarmTime(context, id)?.let { "$it alarm, until $until" } ?: "Until $until",
+        alarmTime(context, config)?.let { "$it alarm, until $until" } ?: "Until $until",
       )
         .addAction(0, "Dismiss", pending(context, ACTION_DISMISS, id))
         .build(),
@@ -153,12 +163,12 @@ class LockedAlarmReceiver : BroadcastReceiver() {
 
   private fun timeOut(context: Context, id: Int, snoozes: Int) {
     if (ringingId != id) return
-    val config = LockedAlarms.get(context, id)
+    val config = configFor(context, id)
     if (config.snoozeEnabled && snoozes < config.maxSnoozes) {
       snooze(context, id, snoozes)
     } else {
       stopRinging(context, id)
-      postMissed(context, id)
+      postMissed(context, config, id)
     }
   }
 
@@ -169,12 +179,22 @@ class LockedAlarmReceiver : BroadcastReceiver() {
       RingService.stop()
       notificationManager(context).cancel(notificationId(id))
       ringingId = null
+      ringingConfig = null
+      LockedAlarms.ringingRingtonePath = null
     }
   }
 
-  // [dueAt]: when the alarm should have rung, which is what the notification shows.
-  private fun postMissed(context: Context, id: Int, dueAt: Long = System.currentTimeMillis()) {
-    val time = alarmTime(context, id) ?: DateFormat.getTimeFormat(context).format(Date(dueAt))
+  private fun configFor(context: Context, id: Int): LockedAlarms.Config =
+    ringingConfig?.takeIf { id == ringingId } ?: LockedAlarms.get(context, id)
+
+  // [dueAt]: when the alarm should have rung, shown if the alarm's own time isn't known.
+  private fun postMissed(
+    context: Context,
+    config: LockedAlarms.Config,
+    id: Int,
+    dueAt: Long = System.currentTimeMillis(),
+  ) {
+    val time = alarmTime(context, config) ?: DateFormat.getTimeFormat(context).format(Date(dueAt))
     notificationManager(context).notify(
       NOTIFICATION_TAG,
       notificationId(id),
@@ -183,12 +203,12 @@ class LockedAlarmReceiver : BroadcastReceiver() {
   }
 
   private fun ringingNotification(context: Context, id: Int, snoozes: Int): Notification {
-    val config = LockedAlarms.get(context, id)
+    val config = configFor(context, id)
     val builder =
       baseNotification(
         context,
-        if (snoozes > 0) "Alarm (snoozed)" else "Alarm",
-        alarmTime(context, id) ?: DateFormat.getTimeFormat(context).format(Date()),
+        if (ringingIsSnooze || snoozes > 0) "Alarm (snoozed)" else "Alarm",
+        alarmTime(context, config) ?: DateFormat.getTimeFormat(context).format(Date()),
       )
         .setOngoing(true)
         .setPriority(NotificationCompat.PRIORITY_MAX)
@@ -212,18 +232,32 @@ class LockedAlarmReceiver : BroadcastReceiver() {
     val icon =
       context.resources.getIdentifier("alarm_icon", "drawable", context.packageName).takeIf { it != 0 }
         ?: android.R.drawable.ic_lock_idle_alarm
+    // Tapping opens Wake (after unlocking, if needed). Its alarm screen doesn't know about
+    // alarms rung here, so they're snoozed or dismissed from these notifications.
+    val openApp =
+      context.packageManager.getLaunchIntentForPackage(context.packageName)?.let {
+        PendingIntent.getActivity(context, 0, it, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+      }
     return NotificationCompat.Builder(context, CHANNEL_ID)
       .setSmallIcon(icon)
       .setContentTitle(title)
       .setContentText(text)
+      .setContentIntent(openApp)
       .setCategory(NotificationCompat.CATEGORY_ALARM)
       .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
   }
 
+  // Whether the handed-over ring time ([timeOfDay], fractional hours) isn't the alarm's own set
+  // time, i.e. it's a snooze.
+  private fun isOtherThanAlarmTime(timeOfDay: String?, config: LockedAlarms.Config): Boolean {
+    val hours = timeOfDay?.toDoubleOrNull() ?: return false
+    return config.minuteOfDay >= 0 && Math.round(hours * 60).toInt() % 1440 != config.minuteOfDay
+  }
+
   // The alarm's set time in the user's time format, which identifies it since labels aren't
   // kept; null if it wasn't saved.
-  private fun alarmTime(context: Context, id: Int): String? {
-    val minuteOfDay = LockedAlarms.get(context, id).minuteOfDay
+  private fun alarmTime(context: Context, config: LockedAlarms.Config): String? {
+    val minuteOfDay = config.minuteOfDay
     if (minuteOfDay < 0) return null
     val time =
       Calendar.getInstance().apply {

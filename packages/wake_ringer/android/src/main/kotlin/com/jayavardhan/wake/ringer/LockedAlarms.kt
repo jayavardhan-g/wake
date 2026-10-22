@@ -41,25 +41,17 @@ internal object LockedAlarms {
     val minuteOfDay: Int,
   )
 
+  // The melody of the alarm LockedAlarmReceiver is ringing, kept by pruneRingtones even if no
+  // saved config refers to it any more.
+  @Volatile var ringingRingtonePath: String? = null
+
   // Used when an alarm has no saved config, e.g. one scheduled before this feature existed.
   val DEFAULT = Config("", AudioAttributes.USAGE_ALARM, 1f, 0, true, 5, true, 5, 3, -1)
 
   /** Saves [config] for alarm [id], copying [ringtoneUri]. Slow (file copy): not on the main thread. */
   fun save(context: Context, id: Int, ringtoneUri: String, config: Config) {
     val path = copyRingtone(context, ringtoneUri) ?: ""
-    val json =
-      JSONObject()
-        .put("ringtonePath", path)
-        .put("usage", config.usage)
-        .put("volume", config.volume.toDouble())
-        .put("secondsToMaxVolume", config.secondsToMaxVolume)
-        .put("vibrate", config.vibrate)
-        .put("ringMinutes", config.ringMinutes)
-        .put("snoozeEnabled", config.snoozeEnabled)
-        .put("snoozeMinutes", config.snoozeMinutes)
-        .put("maxSnoozes", config.maxSnoozes)
-        .put("minuteOfDay", config.minuteOfDay)
-    preferences(context).edit().putString(id.toString(), json.toString()).apply()
+    preferences(context).edit().putString(id.toString(), toJson(config.copy(ringtonePath = path)).toString()).apply()
   }
 
   fun remove(context: Context, id: Int) {
@@ -69,26 +61,41 @@ internal object LockedAlarms {
   fun get(context: Context, id: Int): Config {
     val stored = preferences(context).getString(id.toString(), null) ?: return DEFAULT
     return try {
-      val json = JSONObject(stored)
-      Config(
-        ringtonePath = json.optString("ringtonePath"),
-        usage = json.optInt("usage", DEFAULT.usage),
-        volume = json.optDouble("volume", 1.0).toFloat(),
-        secondsToMaxVolume = json.optInt("secondsToMaxVolume"),
-        vibrate = json.optBoolean("vibrate", DEFAULT.vibrate),
-        ringMinutes = json.optInt("ringMinutes", DEFAULT.ringMinutes).coerceAtLeast(1),
-        snoozeEnabled = json.optBoolean("snoozeEnabled", DEFAULT.snoozeEnabled),
-        snoozeMinutes = json.optInt("snoozeMinutes", DEFAULT.snoozeMinutes).coerceAtLeast(1),
-        maxSnoozes = json.optInt("maxSnoozes", DEFAULT.maxSnoozes),
-        minuteOfDay = json.optInt("minuteOfDay", -1),
-      )
+      fromJson(JSONObject(stored))
     } catch (e: JSONException) {
       Log.e(TAG, "Invalid config for alarm $id", e)
       DEFAULT
     }
   }
 
-  /** Deletes melody copies that no saved alarm uses any more. */
+  private fun toJson(config: Config): JSONObject =
+    JSONObject()
+      .put("ringtonePath", config.ringtonePath)
+      .put("usage", config.usage)
+      .put("volume", config.volume.toDouble())
+      .put("secondsToMaxVolume", config.secondsToMaxVolume)
+      .put("vibrate", config.vibrate)
+      .put("ringMinutes", config.ringMinutes)
+      .put("snoozeEnabled", config.snoozeEnabled)
+      .put("snoozeMinutes", config.snoozeMinutes)
+      .put("maxSnoozes", config.maxSnoozes)
+      .put("minuteOfDay", config.minuteOfDay)
+
+  private fun fromJson(json: JSONObject): Config =
+    Config(
+      ringtonePath = json.optString("ringtonePath"),
+      usage = json.optInt("usage", DEFAULT.usage),
+      volume = json.optDouble("volume", 1.0).toFloat(),
+      secondsToMaxVolume = json.optInt("secondsToMaxVolume"),
+      vibrate = json.optBoolean("vibrate", DEFAULT.vibrate),
+      ringMinutes = json.optInt("ringMinutes", DEFAULT.ringMinutes).coerceAtLeast(1),
+      snoozeEnabled = json.optBoolean("snoozeEnabled", DEFAULT.snoozeEnabled),
+      snoozeMinutes = json.optInt("snoozeMinutes", DEFAULT.snoozeMinutes).coerceAtLeast(1),
+      maxSnoozes = json.optInt("maxSnoozes", DEFAULT.maxSnoozes),
+      minuteOfDay = json.optInt("minuteOfDay", -1),
+    )
+
+  /** Deletes melody copies that no saved alarm or pending snooze uses any more. */
   fun pruneRingtones(context: Context) {
     val used =
       preferences(context).all.values.mapNotNullTo(HashSet<String>()) { value ->
@@ -98,31 +105,38 @@ internal object LockedAlarms {
           null
         }
       }
+    snoozes(context).mapTo(used) { it.config.ringtonePath }
+    ringingRingtonePath?.let { used.add(it) }
     ringtoneDirectory(context).listFiles()?.forEach { file ->
       if (file.absolutePath !in used) file.delete()
     }
   }
 
-  data class Snooze(val id: Int, val at: Long, val snoozes: Int)
+  // [config] is the alarm's config when it was snoozed: Flutter replaces or removes saved
+  // configs whenever it reschedules its alarms (e.g. right after unlock), which mustn't
+  // change an alarm that's already ringing or snoozed natively.
+  data class Snooze(val id: Int, val at: Long, val snoozes: Int, val config: Config)
 
   // Snoozes set from a locked alarm's notification are AlarmManager alarms, which a reboot
   // clears; they are kept here so LockedBootReceiver can restore them.
   fun saveSnooze(context: Context, snooze: Snooze) {
-    snoozePreferences(context)
-      .edit()
-      .putString(snooze.id.toString(), JSONObject().put("at", snooze.at).put("snoozes", snooze.snoozes).toString())
-      .apply()
+    val json = JSONObject().put("at", snooze.at).put("snoozes", snooze.snoozes).put("config", toJson(snooze.config))
+    snoozePreferences(context).edit().putString(snooze.id.toString(), json.toString()).apply()
   }
 
   fun removeSnooze(context: Context, id: Int) {
     snoozePreferences(context).edit().remove(id.toString()).apply()
   }
 
+  fun snooze(context: Context, id: Int): Snooze? = snoozes(context).firstOrNull { it.id == id }
+
   fun snoozes(context: Context): List<Snooze> =
     snoozePreferences(context).all.mapNotNull { (key, value) ->
       try {
         val json = JSONObject(value as? String ?: return@mapNotNull null)
-        Snooze(key.toInt(), json.getLong("at"), json.optInt("snoozes"))
+        val id = key.toInt()
+        val config = json.optJSONObject("config")?.let { fromJson(it) } ?: get(context, id)
+        Snooze(id, json.getLong("at"), json.optInt("snoozes"), config)
       } catch (e: Exception) {
         Log.e(TAG, "Invalid snooze $key", e)
         null
