@@ -32,6 +32,8 @@ class LockedAlarmReceiver : BroadcastReceiver() {
     private const val ACTION_DISMISS = "com.jayavardhan.wake.ringer.DISMISS"
     private const val ACTION_TIMEOUT = "com.jayavardhan.wake.ringer.TIMEOUT"
     private const val ACTION_REPOST = "com.jayavardhan.wake.ringer.REPOST"
+    // Sent by LockedBootReceiver after a reboot.
+    const val ACTION_RESTORE = "com.jayavardhan.wake.ringer.RESTORE"
     private const val CHANNEL_ID = "wake_locked_alarms"
     private const val NOTIFICATION_TAG = "locked_alarm"
     // A handed-over alarm this late (e.g. the phone was off) is reported as missed instead.
@@ -49,6 +51,7 @@ class LockedAlarmReceiver : BroadcastReceiver() {
       ACTION_SNOOZE -> snooze(context, id, snoozes)
       ACTION_DISMISS -> dismiss(context, id)
       ACTION_TIMEOUT -> timeOut(context, id, snoozes)
+      ACTION_RESTORE -> restoreSnoozes(context)
       ACTION_REPOST ->
         if (ringingId == id) {
           notificationManager(context).notify(notificationId(id), ringingNotification(context, id, snoozes))
@@ -57,6 +60,8 @@ class LockedAlarmReceiver : BroadcastReceiver() {
   }
 
   private fun ring(context: Context, id: Int, snoozes: Int, timeOfDay: String?) {
+    // If this is a snooze, it's ringing now and no longer needs restoring after a reboot.
+    LockedAlarms.removeSnooze(context, id)
     if (minutesLate(timeOfDay) > MAX_LATE_MINUTES) {
       Log.i(TAG, "Alarm $id is more than $MAX_LATE_MINUTES minutes late, reporting it as missed")
       postMissed(context, id)
@@ -95,6 +100,33 @@ class LockedAlarmReceiver : BroadcastReceiver() {
     stopRinging(context, id)
     val at = System.currentTimeMillis() + config.snoozeMinutes * 60_000L
     alarmClock(context, at, pending(context, ACTION_RING, id, snoozes + 1))
+    LockedAlarms.saveSnooze(context, LockedAlarms.Snooze(id, at, snoozes + 1))
+    postSnoozed(context, id, at)
+    Log.i(TAG, "Snoozed alarm $id until $at")
+  }
+
+  // A reboot clears AlarmManager alarms and notifications: reschedule pending snoozes, ring
+  // ones that came due while the phone was restarting, and report older ones as missed.
+  // Runs at both LOCKED_BOOT_COMPLETED and BOOT_COMPLETED; ringing removes the saved snooze,
+  // so one that's due rings only once.
+  private fun restoreSnoozes(context: Context) {
+    val now = System.currentTimeMillis()
+    for (snooze in LockedAlarms.snoozes(context)) {
+      when {
+        snooze.at > now -> {
+          alarmClock(context, snooze.at, pending(context, ACTION_RING, snooze.id, snooze.snoozes))
+          postSnoozed(context, snooze.id, snooze.at)
+        }
+        now - snooze.at <= MAX_LATE_MINUTES * 60_000L -> ring(context, snooze.id, snooze.snoozes, null)
+        else -> {
+          LockedAlarms.removeSnooze(context, snooze.id)
+          postMissed(context, snooze.id)
+        }
+      }
+    }
+  }
+
+  private fun postSnoozed(context: Context, id: Int, at: Long) {
     val until = DateFormat.getTimeFormat(context).format(Date(at))
     notificationManager(context).notify(
       NOTIFICATION_TAG,
@@ -103,10 +135,10 @@ class LockedAlarmReceiver : BroadcastReceiver() {
         .addAction(0, "Dismiss", pending(context, ACTION_DISMISS, id))
         .build(),
     )
-    Log.i(TAG, "Snoozed alarm $id until $until")
   }
 
   private fun dismiss(context: Context, id: Int) {
+    LockedAlarms.removeSnooze(context, id)
     stopRinging(context, id)
     // Cancels a pending snooze too.
     alarmManager(context).cancel(pending(context, ACTION_RING, id))

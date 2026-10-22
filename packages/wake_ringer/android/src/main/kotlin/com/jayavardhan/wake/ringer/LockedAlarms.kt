@@ -23,6 +23,7 @@ import org.json.JSONObject
 internal object LockedAlarms {
   private const val TAG = "WakeLockedAlarms"
   private const val PREFERENCES = "wake_locked_alarms"
+  private const val SNOOZE_PREFERENCES = "wake_locked_snoozes"
   private const val RINGTONE_DIRECTORY = "locked_ringtones"
 
   data class Config(
@@ -97,6 +98,35 @@ internal object LockedAlarms {
       if (file.absolutePath !in used) file.delete()
     }
   }
+
+  data class Snooze(val id: Int, val at: Long, val snoozes: Int)
+
+  // Snoozes set from a locked alarm's notification are AlarmManager alarms, which a reboot
+  // clears; they are kept here so LockedBootReceiver can restore them.
+  fun saveSnooze(context: Context, snooze: Snooze) {
+    snoozePreferences(context)
+      .edit()
+      .putString(snooze.id.toString(), JSONObject().put("at", snooze.at).put("snoozes", snooze.snoozes).toString())
+      .apply()
+  }
+
+  fun removeSnooze(context: Context, id: Int) {
+    snoozePreferences(context).edit().remove(id.toString()).apply()
+  }
+
+  fun snoozes(context: Context): List<Snooze> =
+    snoozePreferences(context).all.mapNotNull { (key, value) ->
+      try {
+        val json = JSONObject(value as? String ?: return@mapNotNull null)
+        Snooze(key.toInt(), json.getLong("at"), json.optInt("snoozes"))
+      } catch (e: Exception) {
+        Log.e(TAG, "Invalid snooze $key", e)
+        null
+      }
+    }
+
+  private fun snoozePreferences(context: Context) =
+    storageContext(context).getSharedPreferences(SNOOZE_PREFERENCES, Context.MODE_PRIVATE)
 
   private fun storageContext(context: Context): Context =
     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
