@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:ui';
 
 import 'package:clock_app/alarm/logic/alarm_isolate.dart';
+import 'package:clock_app/alarm/logic/task_activity.dart';
 import 'package:clock_app/alarm/utils/alarm_id.dart';
 import 'package:clock_app/alarm/types/alarm.dart';
 import 'package:clock_app/common/types/notification_type.dart';
@@ -34,17 +36,51 @@ class AlarmNotificationScreen extends StatefulWidget {
 }
 
 class _AlarmNotificationScreenState extends State<AlarmNotificationScreen> {
+  // While a task is shown the alarm is quieter. With no input for this long it
+  // goes back to full volume, so dozing off on a task doesn't leave a quiet
+  // alarm; the next input lowers it again. The task's progress is kept.
+  static const _taskIdleTimeout = Duration(seconds: 15);
+
   late Alarm alarm;
   late Widget _currentWidget;
   late int _currentIndex = widget.initialIndex;
   late Widget actionWidget;
+  Timer? _taskIdleTimer;
+  bool _onTask = false;
+  bool _raisedForIdle = false;
+
+  // A factor of the alarm's own volume. Sending an absolute volume (as this
+  // screen used to) cancelled rising volume as soon as the screen opened.
+  void _sendVolumeFactor(double factor) {
+    IsolateNameServer.lookupPortByName(setAlarmVolumePortName)?.send([factor]);
+  }
+
+  void _onTaskActivity() {
+    if (!_onTask) return;
+    if (_raisedForIdle) {
+      _raisedForIdle = false;
+      _sendVolumeFactor(alarm.volumeDuringTasks / 100);
+    }
+    _taskIdleTimer?.cancel();
+    _taskIdleTimer = Timer(_taskIdleTimeout, () {
+      _raisedForIdle = true;
+      _sendVolumeFactor(1.0);
+    });
+  }
+
+  void _leaveTasks() {
+    _onTask = false;
+    _taskIdleTimer?.cancel();
+  }
+
   void _setNextWidget() {
     setState(() {
       if (_currentIndex < 0) {
-        IsolateNameServer.lookupPortByName(setAlarmVolumePortName)
-            ?.send([alarm.volume]);
+        _leaveTasks();
+        _sendVolumeFactor(1.0);
         _currentWidget = actionWidget;
       } else if (_currentIndex >= alarm.tasks.length) {
+        _leaveTasks();
         if (widget.onPop != null) {
           widget.onPop!();
           Navigator.of(context).pop(true);
@@ -53,9 +89,10 @@ class _AlarmNotificationScreenState extends State<AlarmNotificationScreen> {
               ScheduledNotificationType.alarm);
         }
       } else {
-        IsolateNameServer.lookupPortByName(setAlarmVolumePortName)
-            ?.send([alarm.volume * alarm.volumeDuringTasks / 100]);
-        // RingtonePlayer.setVolume(0);
+        _onTask = true;
+        _raisedForIdle = false;
+        _sendVolumeFactor(alarm.volumeDuringTasks / 100);
+        _onTaskActivity();
         _currentWidget = alarm.tasks[_currentIndex].builder(_setNextWidget);
       }
       _currentIndex++;
@@ -65,6 +102,7 @@ class _AlarmNotificationScreenState extends State<AlarmNotificationScreen> {
   @override
   void initState() {
     super.initState();
+    taskActivity.addListener(_onTaskActivity);
 
     Alarm? currentAlarm = getAlarmById(widget.scheduleId);
     if (currentAlarm == null) {
@@ -95,6 +133,13 @@ class _AlarmNotificationScreenState extends State<AlarmNotificationScreen> {
     _setNextWidget();
   }
 
+  @override
+  void dispose() {
+    taskActivity.removeListener(_onTaskActivity);
+    _taskIdleTimer?.cancel();
+    super.dispose();
+  }
+
   void _snoozeAlarm() {
     dismissAlarmNotification(widget.scheduleId, AlarmDismissType.snooze,
         ScheduledNotificationType.alarm);
@@ -108,7 +153,12 @@ class _AlarmNotificationScreenState extends State<AlarmNotificationScreen> {
         return true;
       },
       child: Scaffold(
-        body: SingleChildScrollView(
+        // Touches count as working on a task; typing is reported by the
+        // tasks through taskActivity.
+        body: Listener(
+          behavior: HitTestBehavior.translucent,
+          onPointerDown: (_) => _onTaskActivity(),
+          child: SingleChildScrollView(
           child: SizedBox(
             height: MediaQuery.of(context).size.height,
             child: Column(
@@ -164,6 +214,7 @@ class _AlarmNotificationScreenState extends State<AlarmNotificationScreen> {
               ],
             ),
           ),
+        ),
         ),
       ),
     );

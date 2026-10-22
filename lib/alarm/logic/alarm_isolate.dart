@@ -211,8 +211,10 @@ void _stopAlarmAfterRingDuration(
   });
 }
 
-void setVolume(double volume) {
-  RingtonePlayer.setVolume(volume / 100);
+// The alarm screen sends a factor of the alarm's own volume (lower while the
+// user solves tasks), which keeps rising volume going.
+void setVolume(double factor) {
+  RingtonePlayer.setVolumeFactor(factor);
 }
 
 void stopAlarm(int scheduleId, AlarmStopAction action) async {

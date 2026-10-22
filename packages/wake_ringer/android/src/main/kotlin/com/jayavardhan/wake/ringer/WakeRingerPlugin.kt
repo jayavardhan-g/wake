@@ -31,6 +31,10 @@ class WakeRingerPlugin : FlutterPlugin, MethodChannel.MethodCallHandler {
         Ringer.setVolume((call.argument<Double>("volume") ?: 1.0).toFloat())
         result.success(null)
       }
+      "setVolumeFactor" -> {
+        Ringer.setVolumeFactor((call.argument<Double>("factor") ?: 1.0).toFloat())
+        result.success(null)
+      }
       "stop" -> {
         Ringer.stop(context)
         RingService.stop()

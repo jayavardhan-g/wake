@@ -37,6 +37,10 @@ internal object Ringer {
   private var focusRequest: AudioFocusRequest? = null
   private var attributes: AudioAttributes? = null
   private var targetVolume = 1f
+  private var volumeFactor = 1f
+  private var rampStartedAt = 0L
+  // 0 when the volume doesn't rise.
+  private var rampDurationMs = 0L
 
   /** Starts ringing. Returns false if neither [uri] nor the system alarm sound would play. */
   fun start(
@@ -72,28 +76,38 @@ internal object Ringer {
     attributes = audioAttributes
     requestFocus(context)
     targetVolume = volume
+    volumeFactor = 1f
+    rampStartedAt = System.currentTimeMillis()
+    rampDurationMs = secondsToMaxVolume * 1000L
     if (startAtRandomPosition && mediaPlayer.duration > 0) {
       mediaPlayer.seekTo(Random.nextInt(mediaPlayer.duration))
     }
-    if (secondsToMaxVolume > 0) {
-      mediaPlayer.setVolume(0f, 0f)
-      rampVolume(System.currentTimeMillis(), secondsToMaxVolume * 1000L)
-    } else {
-      mediaPlayer.setVolume(volume, volume)
-    }
-    mediaPlayer.start()
     player = mediaPlayer
+    rampVolume()
+    mediaPlayer.start()
 
     if (vibrate) startVibration(context, usage)
     Log.i(TAG, "Ringing $uri (usage $usage, volume $volume, rising ${secondsToMaxVolume}s)")
     return true
   }
 
-  /** Sets the volume now and stops any volume ramp, e.g. to quieten the alarm during tasks. */
+  /** Sets the volume now and stops any volume ramp. */
   fun setVolume(volume: Float) {
     handler.removeCallbacksAndMessages(null)
     targetVolume = volume
+    rampDurationMs = 0
+    volumeFactor = 1f
     player?.setVolume(volume, volume)
+  }
+
+  /**
+   * Scales the volume by [factor] (e.g. quieter while the user solves the alarm's tasks)
+   * without stopping a rising-volume ramp: the volume is the alarm's volume × ramp progress ×
+   * factor.
+   */
+  fun setVolumeFactor(factor: Float) {
+    volumeFactor = factor.coerceIn(0f, 1f)
+    applyVolume()
   }
 
   fun stop(context: Context) {
@@ -139,11 +153,21 @@ internal object Ringer {
     }
   }
 
-  private fun rampVolume(startedAt: Long, durationMs: Long) {
-    val fraction = ((System.currentTimeMillis() - startedAt).toFloat() / durationMs).coerceIn(0f, 1f)
-    val volume = targetVolume * fraction
+  private fun rampProgress(): Float =
+    if (rampDurationMs <= 0) {
+      1f
+    } else {
+      ((System.currentTimeMillis() - rampStartedAt).toFloat() / rampDurationMs).coerceIn(0f, 1f)
+    }
+
+  private fun applyVolume() {
+    val volume = targetVolume * rampProgress() * volumeFactor
     player?.setVolume(volume, volume)
-    if (fraction < 1f) handler.postDelayed({ rampVolume(startedAt, durationMs) }, RAMP_STEP_MS)
+  }
+
+  private fun rampVolume() {
+    applyVolume()
+    if (rampProgress() < 1f) handler.postDelayed({ rampVolume() }, RAMP_STEP_MS)
   }
 
   // Focus is requested so music and video pause while the alarm rings. Losing it is ignored:

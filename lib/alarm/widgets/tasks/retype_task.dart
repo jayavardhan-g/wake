@@ -1,5 +1,6 @@
 import 'dart:math';
 
+import 'package:clock_app/alarm/logic/task_activity.dart';
 import 'package:clock_app/common/utils/text_size.dart';
 import 'package:clock_app/common/widgets/card_container.dart';
 import 'package:clock_app/settings/types/setting_group.dart';
@@ -55,6 +56,7 @@ class _RetypeTaskState extends State<RetypeTask> {
   @override
   void initState() {
     super.initState();
+    _textController.addListener(taskActivity.report);
     _textController.addListener(() {
       if (_textController.text == string && _problemsSolved < _problemCount) {
         _problemsSolved += 1;

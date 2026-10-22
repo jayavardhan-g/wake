@@ -40,6 +40,12 @@ class WakeRinger {
     await _channel.invokeMethod('setVolume', {'volume': volume});
   }
 
+  /// Scales the ringing volume by [factor] (0 to 1) without stopping a
+  /// rising-volume ramp, e.g. quieter while the user solves tasks.
+  static Future<void> setVolumeFactor(double factor) async {
+    await _channel.invokeMethod('setVolumeFactor', {'factor': factor});
+  }
+
   static Future<void> stop() async {
     try {
       await _channel.invokeMethod('stop');

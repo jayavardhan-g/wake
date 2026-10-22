@@ -21,6 +21,11 @@ class RingtonePlayer {
   static bool _stopRisingVolume = false;
   // An alarm or timer is ringing through WakeRinger rather than just_audio.
   static bool _ringingNatively = false;
+  // just_audio's volume is _baseVolume × _rampLevel (rising volume) ×
+  // _volumeFactor (e.g. lowered during tasks).
+  static double _baseVolume = 1;
+  static double _rampLevel = 1;
+  static double _volumeFactor = 1;
 
   // Bundled with the app, so it can always be played if the chosen melody
   // can't be (missing file, revoked permission, unsupported format).
@@ -175,6 +180,22 @@ class RingtonePlayer {
     );
   }
 
+  /// Scales the ringing volume by [factor] (1.0 is the alarm's own volume)
+  /// without stopping rising volume, e.g. quieter while solving tasks.
+  static Future<void> setVolumeFactor(double factor) async {
+    logger.t("Setting volume factor to $factor");
+    if (_ringingNatively) {
+      await WakeRinger.setVolumeFactor(factor);
+      return;
+    }
+    _volumeFactor = factor;
+    await _applyVolume();
+  }
+
+  static Future<void> _applyVolume() async {
+    await activePlayer?.setVolume(_baseVolume * _rampLevel * _volumeFactor);
+  }
+
   static Future<void> setVolume(double volume) async {
     logger.t("Setting volume to $volume");
     _stopRisingVolume = true;
@@ -214,16 +235,21 @@ class RingtonePlayer {
         logger.t("Starting at random position: $randomNumber");
         activePlayer?.seek(duration * randomNumber);
       }
-      await setVolume(volume);
+      _baseVolume = volume;
+      _volumeFactor = 1;
+      _rampLevel = secondsToMaxVolume > 0 ? 0 : 1;
+      await _applyVolume();
 
-      // Gradually increase the volume
+      // Gradually increase the volume. Steps go through _applyVolume rather
+      // than setVolume, which stops the ramp (it did, after the first step).
       if (secondsToMaxVolume > 0) {
-        for (int i = 0; i <= 10; i++) {
+        for (int i = 1; i <= 10; i++) {
           Future.delayed(
             Duration(milliseconds: i * (secondsToMaxVolume * 100)),
             () {
               if (!_stopRisingVolume) {
-                setVolume((i / 10) * volume);
+                _rampLevel = i / 10;
+                _applyVolume();
               }
             },
           );
