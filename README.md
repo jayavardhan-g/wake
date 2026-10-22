@@ -2,143 +2,100 @@
 
 <image src="icon.png" height="100"/>
 
-# Chrono
+# Wake
 
-### A modern and powerful clock, alarms, timer and stopwatch app for Android!
-![alt text](cover.png)
+### A fork of [Chrono](https://github.com/vicolo-dev/chrono) focused on alarms that always ring
 
-![tests](https://github.com/vicolo-dev/chrono/actions/workflows/tests.yml/badge.svg)
-[![codecov](https://codecov.io/gh/vicolo-dev/chrono/branch/master/graph/badge.svg?token=cKxMm8KVev)](https://codecov.io/gh/vicolo-dev/chrono)
-[![Codacy Badge](https://app.codacy.com/project/badge/Grade/7dc1e51c1616482baa5392bc0826c50a)](https://app.codacy.com/gh/vicolo-dev/chrono/dashboard?utm_source=gh&utm_medium=referral&utm_content=&utm_campaign=Badge_grade)
-<a href="https://hosted.weblate.org/engage/chrono/">
-<img src="https://hosted.weblate.org/widget/chrono/app/svg-badge.svg" alt="Translation status" />
-</a>
-<span class="badge-patreon"><a href="https://patreon.com/vicolo" title="Donate to this project using Patreon"><img src="https://img.shields.io/badge/patreon-donate-orange.svg" alt="Patreon donate button" /></a></span>
-
-<a href="https://hosted.weblate.org/engage/chrono/">
-<img src="https://hosted.weblate.org/widget/chrono/app/287x66-grey.png" alt="Translation status" />
-</a>
-
-[<img src="https://fdroid.gitlab.io/artwork/badge/get-it-on.png" alt="Get it on F-Droid" height="80">](https://f-droid.org/packages/com.vicolo.chrono)
-[<img src="https://gitlab.com/IzzyOnDroid/repo/-/raw/master/assets/IzzyOnDroid.png" alt="Get it on IzzyOnDroid" height=80/>](https://apt.izzysoft.de/fdroid/index/apk/com.vicolo.chrono)
-[<img src="https://i.ibb.co/q0mdc4Z/get-it-on-github.png" alt="Get it on Github" height=80/>](https://github.com/vicolo-dev/chrono/releases/latest)
-
+[![Latest release](https://img.shields.io/github/v/release/jayavardhan-g/wake)](https://github.com/jayavardhan-g/wake/releases/latest)
+![tests](https://github.com/jayavardhan-g/wake/actions/workflows/tests.yml/badge.svg)
 
 </div>
 
+Wake is [Chrono](https://github.com/vicolo-dev/chrono) 0.6.0 (clock, alarms, timer and
+stopwatch for Android) with fixes for alarms that rang silently, late, or not at all, and a
+native ringer that behaves like the stock clock app. Everything else is Chrono's app and work.
+It is a personal fork, tested mainly on a Motorola Edge 60 Pro running Android 17.
 
-Its usable, but still WIP, so you might encounter some bugs. Make sure to test it out thorougly on your device before using it for critical alarms. Feel free to open an issue.
+It installs next to Chrono (package `com.jayavardhan.wake`); Chrono's backup and restore moves
+your alarms over.
 
-# Table of Content
-- [Features](#features)
-- [Platforms](#platforms)
-- [Contribute](#contribute)
-- [Development](#development)
-- [Todo](#todo)
-- [Screenshots](#screenshots)
+## What's different from Chrono
+
+**Alarms ring reliably**
+- Alarms are rung natively from a foreground service, so the sound always plays: on recent
+  Android versions Chrono's player silently gave up when another app held audio, leaving only
+  vibration.
+- Music and video pause while an alarm rings and resume afterwards.
+- Alarms ring on time on an idle, locked phone. Chrono queued the ringing as a background job,
+  which Android postpones until the phone is unlocked.
+- After a reboot, alarms ring before the phone is unlocked, with Snooze and Dismiss on the
+  lock screen. Snoozes survive reboots; an alarm missed while the phone was off is reported
+  as missed.
+
+**Alarm behaviour**
+- An alarm left ringing snoozes itself after a set ring duration ("Ring Duration", default 5
+  minutes), up to Max Snoozes, then shows a missed-alarm notification.
+- Rising volume works, including alongside alarm tasks.
+- While solving an alarm task the alarm is quieter, but it goes back to full volume after 15
+  seconds without input.
+- A snoozed one-time alarm no longer rings again the next day.
+
+**Other**
+- If a melody can't be played, the phone's default alarm sound, then a bundled one, plays
+  instead of nothing.
+- Importing a melody you already have doesn't store a second copy.
+- The optional persistent notification no longer keeps the phone out of deep sleep.
+
+## Install
+
+Download the APK for your device (`arm64-v8a` for most phones) from
+[Releases](https://github.com/jayavardhan-g/wake/releases/latest), or add this repository to
+[Obtainium](https://github.com/ImranR98/Obtainium) to get updates.
+
+For alarms to sound while Do Not Disturb is on, allow alarms in your Do Not Disturb settings.
 
 ## Features
-- Modern and easy to use interface
-- Available in variety of [languages](#translations)
+
+Inherited from Chrono:
+
+- Modern and easy to use interface, available in a variety of languages
 ### Alarms
 - Customizable schedules (Daily, Weekly, Specific week days, Specific dates, Date range)
 - Configure melody/ringtone, rising volume and vibrations
 - Configure Snooze length, max snoozes and other snooze behaviour
 - Option to auto delete dismissed alarms and skip alarms
-- Alarm tasks (Math problems, Retype text, Sequence, more to come)
+- Alarm tasks (Math problems, Retype text, Sequence)
 - Dial, spinner and text time pickers
-- Filter and sort alarms
-- Add tags
+- Filter and sort alarms, add tags
 ### Clock
 - Customizable clock display
 - World clocks with relative time difference
-- Search and add cities
 ### Timer
-- Support for multiple timers
+- Multiple timers, presets, fullscreen timer
 - Configure melody/ringtone, rising volume and vibrations
-- Timer presets
-- Option to fullscreen a timer
-- Dial and spinner duration pickers
-- Filter and sort timers
-- Add tags
 ### Stopwatch
-- Lap history with lap times and elapsed times
-- Lap comparisons (fastest, slowest, average, previous)
+- Lap history with lap times, elapsed times and comparisons
 ### Appearance
-- Material You icons and themes
-- Highly customizable color themes
-- Highly customizable style themes
-- Other options like animations, nav bar styles, time picker styles
-
-## Platforms
-Currently, the app is only available for android. I don't have an apple device to develop for iOS, but feel free
-to contribute if you want iOS support. The alarm and timer features
-use android-only code, so that will need to be ported. Everything else should mostly work fine.
-
-## Contribute
-All contributions are welcome, whether creating issues, pull requests or translations. 
-### Issues
-Feel free to create issues regarding any issues you might be facing, any improvements or enhancements, or any feature-requests. Try to follow the templates and include as much information as possible in your issues.
-### Pull Requests
-Pull Requests are highly welcome. When contributing to this repository, please first discuss the change you wish to make via an issue. Also, please refer to [Effective Dart](https://dart.dev/effective-dart) as a guideline for the coding standards expected from pull requests.
-### Translations
-You can help translate the app into your preferred language using weblate at https://hosted.weblate.org/projects/chrono/.
-
-<a href="https://hosted.weblate.org/engage/chrono/">
-<img src="https://hosted.weblate.org/widget/chrono/app/287x66-grey.png" alt="Translation status" />
-</a>
-
-Current progress:
-
-<a href="https://hosted.weblate.org/engage/chrono/">
-<img src="https://hosted.weblate.org/widget/chrono/app/horizontal-auto.svg" alt="Translation status" />
-</a>
-
-### Spread the word!
-If you found the app useful, you can help the project by sharing it with friends and family.
-### Donate
-The amount of time I can given to the app is bound by financial constraints. Donations will really help allow me in giving more and more time to the development of this app.
-
-<span class="badge-patreon"><a href="https://patreon.com/vicolo" title="Donate to this project using Patreon"><img src="https://img.shields.io/badge/patreon-donate-orange.svg" alt="Patreon donate button" /></a></span>
-
-### Our generous patreons
-- Potato @potatocinna
-- Thorsten @th23x
+- Material You icons and themes, customizable color and style themes
 
 ## Development
 
-This app is built using flutter. To start developing:
-1. Follow [this](https://docs.flutter.dev/get-started/install) guide to install flutter and all required tools.
-2. Run the app by `flutter run --flavor dev`. For production builds, use `flutter build apk --release --split-per-abi --flavor prod`.
+The app is built with Flutter (3.22). To build locally, install Flutter and run
+`flutter run --flavor dev`, or `flutter build apk --release --split-per-abi --flavor prod`.
 
-## Todo
-Stuff I would like to do soon™. In no particular order:
-- Alarms
-  - Alarm reliability testing system
-  - Vibration patterns
-  - Alternative time picker interfaces
-  - Array alarms (alarm that will ring after set interval (10 minutes etc.)
-  - More tasks
-- Color schemes
-  - More prebuilt themes  
-  - Filter
-  - Tags
-  - Icon colors
-- Theme
-  - Icon themes
-  - Font themes
-  - System fonts
-- Timer
-  - Alternative duration picker interfaces
-- Widgets
-  - Clock
-  - Clock faces
-  - Alarms
-  - Timers
-  - Stopwatch
-  - Customization
- 
+Releases are built by GitHub Actions: pushing a `v*` tag builds signed split APKs and publishes
+a release. The **Tests** workflow (`flutter analyze` and `flutter test`) runs on every push.
+
+Wake's native code lives in two local packages:
+- `packages/wake_ringer`: the native ringer, its foreground service and alarms rung before the
+  first unlock after a reboot.
+- `packages/android_alarm_manager_plus`: a vendored copy of the alarm plugin Chrono uses, changed
+  as described in its `WAKE_CHANGES.md`.
+
 ## Screenshots
+
+From Chrono; Wake looks the same.
+
 <p float="left">
 <image src="fastlane/metadata/android/en-US/images/phoneScreenshots/1.png" height="400"/>
 <image src="fastlane/metadata/android/en-US/images/phoneScreenshots/2.png" height="400"/>
@@ -147,4 +104,12 @@ Stuff I would like to do soon™. In no particular order:
 <image src="fastlane/metadata/android/en-US/images/phoneScreenshots/5.png" height="400"/>
 </p>
 
+## Credits and license
 
+Wake is a modified version of [Chrono](https://github.com/vicolo-dev/chrono) by
+[vicolo-dev](https://github.com/vicolo-dev) and its contributors. If you find it useful,
+consider [supporting Chrono's developer](https://patreon.com/vicolo).
+
+Modified by [jayavardhan-g](https://github.com/jayavardhan-g) from October 2026; the changes are
+listed above and in the commit history. Like Chrono, Wake is licensed under the
+[GNU General Public License v3.0](LICENSE).

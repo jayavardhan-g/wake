@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:clock_app/audio/logic/ringtones.dart';
 import 'package:clock_app/audio/types/ringtone_player.dart';
 import 'package:clock_app/common/types/file_item.dart';
 import 'package:clock_app/common/utils/list_storage.dart';
@@ -11,6 +12,7 @@ import 'package:clock_app/navigation/widgets/app_top_bar.dart';
 import 'package:clock_app/settings/types/setting_item.dart';
 import 'package:clock_app/system/data/device_info.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart';
 import 'package:flutter_gen/gen_l10n/app_localizations.dart';
@@ -32,6 +34,7 @@ class _RingtonesScreenState extends State<RingtonesScreen> {
   @override
   void initState() {
     super.initState();
+    deleteOrphanedMelodyFiles();
   }
 
   @override
@@ -96,18 +99,44 @@ class _RingtonesScreenState extends State<RingtonesScreen> {
 
                   // The result will be null, if the user aborted the dialog
                   if (result != null && result.files.isNotEmpty) {
+                    // Files saved in this import (content to name), which may
+                    // not be in the saved list yet.
+                    final imported = <Uint8List, String>{};
                     for (PlatformFile file in result.files) {
-                      logger.t("Saving melody ${file.name}, size ${file.size}");
                       final bytes = await file.xFile.readAsBytes();
+                      final existingName =
+                          (await findMelodyWithContent(bytes))?.name ??
+                              imported.entries
+                                  .where((e) => listEquals(e.key, bytes))
+                                  .map((e) => e.value)
+                                  .firstOrNull;
+                      if (existingName != null) {
+                        logger.t(
+                            "Not saving melody ${file.name}: same as $existingName");
+                        if (context.mounted) {
+                          showSnackBar(context,
+                              "${file.name} is the same as $existingName, already in your melodies");
+                        }
+                        continue;
+                      }
+                      logger.t("Saving melody ${file.name}, size ${file.size}");
                       final fileItem =
                           FileItem(file.name, "", FileItemType.audio);
                       fileItem.uri =
                           await saveRingtone(fileItem.id.toString(), bytes);
+                      imported[bytes] = file.name;
                       _listController.addItem(fileItem);
                     }
                   }
                 } catch (e) {
                   logger.e("Error loading melody from directory: $e");
+                } finally {
+                  // The picker copies each file into the app's cache first.
+                  try {
+                    await FilePicker.platform.clearTemporaryFiles();
+                  } catch (e) {
+                    logger.e("Error clearing picked files: $e");
+                  }
                 }
               }),
           FAB(

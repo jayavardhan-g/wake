@@ -131,10 +131,13 @@
       android:name="com.flux.flutter_boot_receiver.BootBroadcastReceiver"
       android:permission="android.permission.RECEIVE_BOOT_COMPLETED"
       android:directBootAware="true"
+      tools:node="replace"
       >
+      <!-- Not LOCKED_BOOT_COMPLETED: its service reads credential-protected
+           preferences and crashed before unlock. Rescheduling before unlock is
+           done by android_alarm_manager_plus's RebootBroadcastReceiver. -->
       <intent-filter>
         <action android:name="android.intent.action.BOOT_COMPLETED" />
-        <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
         <action android:name="android.intent.action.QUICKBOOT_POWERON" />
         <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
         <category android:name="android.intent.category.DEFAULT" />

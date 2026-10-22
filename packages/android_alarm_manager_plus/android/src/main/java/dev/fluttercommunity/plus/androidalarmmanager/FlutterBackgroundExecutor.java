@@ -64,7 +64,7 @@ public class FlutterBackgroundExecutor implements MethodCallHandler {
    * background Dart isolate, preparing it to receive Dart callback tasks requests.
    */
   public static void setCallbackDispatcher(Context context, long callbackHandle) {
-    SharedPreferences prefs = context.getSharedPreferences(AlarmService.SHARED_PREFERENCES_KEY, 0);
+    SharedPreferences prefs = AlarmService.preferences(context);
     prefs.edit().putLong(CALLBACK_HANDLE_KEY, callbackHandle).apply();
   }
 
@@ -122,7 +122,7 @@ public class FlutterBackgroundExecutor implements MethodCallHandler {
    */
   public void startBackgroundIsolate(Context context) {
     if (!isRunning()) {
-      SharedPreferences p = context.getSharedPreferences(AlarmService.SHARED_PREFERENCES_KEY, 0);
+      SharedPreferences p = AlarmService.preferences(context);
       long callbackHandle = p.getLong(CALLBACK_HANDLE_KEY, 0);
       startBackgroundIsolate(context, callbackHandle);
     }

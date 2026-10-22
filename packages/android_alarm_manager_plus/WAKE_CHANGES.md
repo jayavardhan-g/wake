@@ -10,3 +10,9 @@ were dropped.
   after it was unlocked. The receiver holds a 60 s self-releasing wake lock while the engine and
   ringtone start, and `goAsync()` keeps it alive for up to 9 s.
 - `AlarmService` (the JobIntentService) is still used for anything else that enqueues work.
+- Direct boot: the plugin's preferences (persistent alarms, callback handle) live in
+  device-protected storage (`AlarmService.preferences`, moved over from credential-protected
+  storage the first time it's readable), and `RebootBroadcastReceiver` also reschedules at
+  `LOCKED_BOOT_COMPLETED`. An alarm firing before the first unlock is removed from the persistent
+  alarms and handed to Wake's native `com.jayavardhan.wake.ringer.LockedAlarmReceiver`, since
+  Flutter can't run until the user unlocks.

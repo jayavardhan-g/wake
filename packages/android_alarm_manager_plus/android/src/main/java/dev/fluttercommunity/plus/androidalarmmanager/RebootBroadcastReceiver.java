@@ -32,8 +32,11 @@ public class RebootBroadcastReceiver extends BroadcastReceiver {
    */
   @Override
   public void onReceive(Context context, Intent intent) {
-    if (Intent.ACTION_BOOT_COMPLETED.equals(intent.getAction())) {
-      Log.i("AlarmService", "Rescheduling after boot!");
+    // Persistent alarms are in device-protected storage, so they can be rescheduled before the
+    // user unlocks; this runs again at BOOT_COMPLETED, which just replaces the same alarms.
+    if (Intent.ACTION_BOOT_COMPLETED.equals(intent.getAction())
+        || Intent.ACTION_LOCKED_BOOT_COMPLETED.equals(intent.getAction())) {
+      Log.i("AlarmService", "Rescheduling after boot (" + intent.getAction() + ")");
       AlarmService.reschedulePersistentAlarms(context);
     }
   }

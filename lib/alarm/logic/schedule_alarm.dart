@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:android_alarm_manager_plus/android_alarm_manager_plus.dart';
 import 'package:clock_app/alarm/logic/alarm_isolate.dart';
 import 'package:clock_app/alarm/logic/alarm_reminder_notifications.dart';
+import 'package:clock_app/alarm/logic/locked_alarms.dart';
 import 'package:clock_app/alarm/types/alarm_event.dart';
 import 'package:clock_app/common/types/notification_type.dart';
 import 'package:clock_app/common/types/schedule_id.dart';
@@ -116,6 +117,7 @@ Future<void> cancelAlarm(int scheduleId, ScheduledNotificationType type) async {
 
     if (type == ScheduledNotificationType.alarm) {
       await cancelAlarmReminderNotification(scheduleId);
+      await removeLockedAlarmConfig(scheduleId);
     }
 
     AndroidAlarmManager.cancel(scheduleId);

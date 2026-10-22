@@ -1,0 +1,31 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+  <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
+  <uses-permission android:name="android.permission.WAKE_LOCK" />
+  <uses-permission android:name="android.permission.VIBRATE" />
+
+  <application>
+    <service
+      android:name="com.jayavardhan.wake.ringer.RingService"
+      android:exported="false"
+      android:directBootAware="true"
+      android:foregroundServiceType="mediaPlayback" />
+    <!-- Rings alarms before the first unlock after a reboot; only Wake itself sends to it. -->
+    <receiver
+      android:name="com.jayavardhan.wake.ringer.LockedAlarmReceiver"
+      android:exported="false"
+      android:directBootAware="true" />
+    <!-- Restores lock-screen snoozes after a reboot. Exported only so the system's boot
+         broadcasts reach it; it ignores every other action. -->
+    <receiver
+      android:name="com.jayavardhan.wake.ringer.LockedBootReceiver"
+      android:exported="true"
+      android:directBootAware="true"
+      android:permission="android.permission.RECEIVE_BOOT_COMPLETED">
+      <intent-filter>
+        <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
+        <action android:name="android.intent.action.BOOT_COMPLETED" />
+      </intent-filter>
+    </receiver>
+  </application>
+</manifest>

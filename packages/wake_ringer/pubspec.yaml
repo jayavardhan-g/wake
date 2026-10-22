@@ -1,0 +1,19 @@
+name: wake_ringer
+description: Rings Wake's alarms and timers natively, from a foreground service.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ">=3.4.0 <4.0.0"
+  flutter: ">=3.3.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.jayavardhan.wake.ringer
+        pluginClass: WakeRingerPlugin

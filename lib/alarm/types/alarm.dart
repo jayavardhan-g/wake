@@ -1,5 +1,6 @@
 import 'package:audio_session/audio_session.dart';
 import 'package:clock_app/alarm/logic/alarm_reminder_notifications.dart';
+import 'package:clock_app/alarm/logic/locked_alarms.dart';
 import 'package:clock_app/alarm/logic/schedule_alarm.dart';
 import 'package:clock_app/alarm/types/alarm_runner.dart';
 import 'package:clock_app/alarm/types/alarm_task.dart';
@@ -88,6 +89,8 @@ class Alarm extends CustomizableListItem {
   List<AlarmTask> get tasks => _settings.getSetting("Tasks").value;
   List<Tag> get tags => _settings.getSetting("Tags").value;
   int get maxSnoozes => _settings.getSetting("Max Snoozes").value.toInt();
+  bool get snoozeEnabled =>
+      _settings.getGroup("Snooze").getSetting("Enabled").value;
   Duration get ringDuration => Duration(
       minutes: _settings.getSetting("Ring Duration").value.toInt());
   bool get canBeDisabledWhenSnoozed =>
@@ -237,6 +240,9 @@ class Alarm extends CustomizableListItem {
       ScheduledNotificationType.alarm,
       "_scheduleSnooze(): Alarm snoozed for $snoozeLength minutes",
     );
+    // The snooze may ring before the first unlock after a reboot, and ringing
+    // disabled a one-time alarm, which removed its locked-alarm config.
+    await saveLockedAlarmConfig(this);
   }
 
   Future<void> cancelSnooze() async {
@@ -262,6 +268,7 @@ class Alarm extends CustomizableListItem {
         await schedule.cancel();
       }
     }
+    await saveLockedAlarmConfig(this);
     updateReminderNotification();
   }
 
@@ -324,6 +331,18 @@ class Alarm extends CustomizableListItem {
 
   Future<void> update(String description) async {
     if (isEnabled) {
+      // A one-time alarm that rang was disabled, which clears its schedule, and
+      // is only enabled again by snoozing it. Once that snooze has passed the
+      // alarm is done: scheduling it would find no past schedule and ring it
+      // again the next day.
+      if (scheduleType == OnceAlarmSchedule &&
+          activeSchedule.currentScheduleDateTime == null &&
+          isSnoozed &&
+          DateTime.now().isAfter(_snoozeTime!)) {
+        await disable();
+        return;
+      }
+
       if (_skippedTime != null &&
           _skippedTime!.millisecondsSinceEpoch <
               DateTime.now().millisecondsSinceEpoch) {

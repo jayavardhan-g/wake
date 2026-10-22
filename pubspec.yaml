@@ -2,7 +2,7 @@ name: clock_app
 description: An alarm, clock, timer and stowatch app.
 
 publish_to: "none" # Remove this line if you wish to publish to pub.dev
-version: 1.0.0+29
+version: 1.1.0+30
 
 environment:
   sdk: '>=3.4.0 <4.0.0'
@@ -30,6 +30,9 @@ dependencies:
   # packages/android_alarm_manager_plus/WAKE_CHANGES.md
   android_alarm_manager_plus:
     path: packages/android_alarm_manager_plus
+  # Native alarm/timer ringing from a foreground service.
+  wake_ringer:
+    path: packages/wake_ringer
   just_audio: ^0.9.31
   awesome_notifications: ^0.9.3
   # awesome_notifications:

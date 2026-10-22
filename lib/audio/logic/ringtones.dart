@@ -5,6 +5,7 @@ import 'package:clock_app/common/data/paths.dart';
 import 'package:clock_app/common/types/file_item.dart';
 import 'package:clock_app/common/utils/list_storage.dart';
 import 'package:clock_app/developer/logic/logger.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_system_ringtones/flutter_system_ringtones.dart';
 import 'package:mime/mime.dart';
@@ -30,6 +31,50 @@ Future<List<FileItem>> getSystemRingtones() async {
         .add(FileItem("Default", path, FileItemType.audio, isDeletable: false));
   }
   return ringtones;
+}
+
+/// Returns the saved melody whose file has the same content as [bytes], so
+/// importing a file again doesn't store another copy.
+Future<FileItem?> findMelodyWithContent(Uint8List bytes) async {
+  for (final melody in await loadList<FileItem>("ringtones")) {
+    // System sounds are content:// URIs, not files Wake stores.
+    if (melody.type != FileItemType.audio || !melody.uri.startsWith("/")) {
+      continue;
+    }
+    try {
+      final file = File(melody.uri);
+      if (!file.existsSync() || file.lengthSync() != bytes.length) continue;
+      if (listEquals(await file.readAsBytes(), bytes)) return melody;
+    } catch (e) {
+      logger.e("Error comparing melody ${melody.uri}: $e");
+    }
+  }
+  return null;
+}
+
+/// Deletes melody copies in Wake's storage that no saved melody refers to,
+/// e.g. left behind by an import that failed halfway.
+Future<void> deleteOrphanedMelodyFiles() async {
+  final used = (await loadList<FileItem>("ringtones")).map((m) => m.uri).toSet();
+  // An empty list more likely means it failed to load than that every
+  // melody was deleted; don't risk deleting all of them.
+  if (used.isEmpty) return;
+  final directory = Directory(await getRingtonesDirectoryPath());
+  if (!directory.existsSync()) return;
+  final recent = DateTime.now().subtract(const Duration(minutes: 1));
+  for (final entity in directory.listSync()) {
+    // Recently written files may belong to an import still in progress.
+    if (entity is File &&
+        !used.contains(entity.path) &&
+        entity.lastModifiedSync().isBefore(recent)) {
+      logger.i("Deleting orphaned melody file ${entity.path}");
+      try {
+        entity.deleteSync();
+      } catch (e) {
+        logger.e("Error deleting orphaned melody file ${entity.path}: $e");
+      }
+    }
+  }
 }
 
 Future<String> getDefaultRingtoneUri() async {

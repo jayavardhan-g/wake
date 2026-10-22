@@ -13,6 +13,7 @@ import android.content.pm.PackageManager;
 import android.os.Build;
 import android.os.Handler;
 import android.os.Looper;
+import android.os.UserManager;
 import android.util.Log;
 import androidx.annotation.NonNull;
 import androidx.core.app.AlarmManagerCompat;
@@ -285,6 +286,24 @@ public class AlarmService extends JobIntentService {
     manager.cancel(existingIntent);
   }
 
+  /**
+   * The plugin's preferences, kept in device-protected storage so persistent alarms can be
+   * rescheduled at LOCKED_BOOT_COMPLETED, before the user first unlocks after a reboot.
+   * Credential-protected preferences from older versions are moved over the first time they are
+   * readable.
+   */
+  static SharedPreferences preferences(Context context) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
+      return context.getSharedPreferences(SHARED_PREFERENCES_KEY, 0);
+    }
+    Context deviceContext = context.createDeviceProtectedStorageContext();
+    UserManager userManager = context.getSystemService(UserManager.class);
+    if (userManager != null && userManager.isUserUnlocked()) {
+      deviceContext.moveSharedPreferencesFrom(context, SHARED_PREFERENCES_KEY);
+    }
+    return deviceContext.getSharedPreferences(SHARED_PREFERENCES_KEY, 0);
+  }
+
   private static String getPersistentAlarmKey(int requestCode) {
     return "android_alarm_manager/persistent_alarm_" + requestCode;
   }
@@ -313,7 +332,7 @@ public class AlarmService extends JobIntentService {
     alarmSettings.put("params", params);
     JSONObject obj = new JSONObject(alarmSettings);
     String key = getPersistentAlarmKey(requestCode);
-    SharedPreferences prefs = context.getSharedPreferences(SHARED_PREFERENCES_KEY, 0);
+    SharedPreferences prefs = preferences(context);
 
     synchronized (persistentAlarmsLock) {
       Set<String> persistentAlarms =
@@ -330,8 +349,8 @@ public class AlarmService extends JobIntentService {
     }
   }
 
-  private static void clearPersistentAlarm(Context context, int requestCode) {
-    SharedPreferences prefs = context.getSharedPreferences(SHARED_PREFERENCES_KEY, 0);
+  static void clearPersistentAlarm(Context context, int requestCode) {
+    SharedPreferences prefs = preferences(context);
     synchronized (persistentAlarmsLock) {
       Set<String> persistentAlarms =
           new HashSet<>(prefs.getStringSet(PERSISTENT_ALARMS_SET_KEY, new HashSet<>()));
@@ -350,7 +369,7 @@ public class AlarmService extends JobIntentService {
 
   public static void reschedulePersistentAlarms(Context context) {
     synchronized (persistentAlarmsLock) {
-      SharedPreferences prefs = context.getSharedPreferences(SHARED_PREFERENCES_KEY, 0);
+      SharedPreferences prefs = preferences(context);
       Set<String> persistentAlarms = prefs.getStringSet(PERSISTENT_ALARMS_SET_KEY, null);
       // No alarms to reschedule.
       if (persistentAlarms == null) {
